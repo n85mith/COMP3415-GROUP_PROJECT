@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareSight — Sign In</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            background: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #0f172a;
+        }
+
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        h1 {
+            margin: 0 0 0.25rem;
+            font-size: 1.5rem;
+            color: #1e3a8a;
+        }
+
+        p.sub {
+            margin: 0 0 1.5rem;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.65rem;
+            margin-bottom: 1rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 0.65rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .demo-box {
+            margin-top: 1.25rem;
+            padding: 0.75rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #475569;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            background: #dbeafe;
+            color: #1e40af;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .panel {
+            margin: 1.25rem 0;
+            padding: 1rem;
+            background: #f8fafc;
+            border-left: 4px solid #2563eb;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .logout-btn {
+            background: #475569;
+        }
+
+        .logout-btn:hover {
+            background: #334155;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Login View -->
+    <div class="card" id="login-view">
+        <h1>CareSight</h1>
+        <p class="sub">Early Warning Score & Escalation Platform</p>
+
+        <div class="error" id="error-box"></div>
+
+        <form id="login-form">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="Enter username" required />
+
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Enter password" required />
+
+            <button type="submit">Sign In</button>
+        </form>
+
+        <div class="demo-box">
+            <strong>Demo Accounts (password: <code>password123</code>):</strong><br />
+            • <code>nurse</code> (Nurse)<br />
+            • <code>clinician</code> (Clinician)<br />
+            • <code>admin</code> (Administrator)
+        </div>
+    </div>
+
+    <!-- Dashboard View (Hidden until login) -->
+    <div class="card" id="dashboard-view" style="display: none;">
+        <span class="badge" id="user-role"></span>
+        <h1 id="welcome-name" style="margin-top: 0.5rem;"></h1>
+        <p class="sub">Signed in to CareSight</p>
+
+        <div class="panel" id="role-content"></div>
+
+        <button class="logout-btn" onclick="logout()">Sign Out</button>
+    </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const errorBox = document.getElementById('error-box');
+        const loginView = document.getElementById('login-view');
+        const dashboardView = document.getElementById('dashboard-view');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorBox.style.display = 'none';
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                errorBox.textContent = data.detail || 'Login failed';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            showDashboard(data);
+        });
+
+        function showDashboard(user) {
+            loginView.style.display = 'none';
+            dashboardView.style.display = 'block';
+            document.getElementById('user-role').textContent = user.role;
+            document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
+
+            const content = document.getElementById('role-content');
+            if (user.role === 'Nurse') {
+                content.innerHTML = '<strong>Ward Nurse View:</strong> Ready to view assigned ward patients and record 7 vital-sign observations.';
+            } else if (user.role === 'Clinician') {
+                content.innerHTML = '<strong>Clinician View:</strong> Ready to review NEWS2 escalation alerts and acknowledge patient responses.';
+            } else {
+                content.innerHTML = '<strong>Administrator View:</strong> Ready to manage staff accounts, wards, and inspect the system audit log.';
+            }
+        }
+
+        function logout() {
+            form.reset();
+            dashboardView.style.display = 'none';
+            loginView.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>
