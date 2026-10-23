@@ -84,6 +84,16 @@
             display: none;
         }
 
+        .success {
+            background: #dcfce7;
+            color: #166534;
+            padding: 0.65rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
         .demo-box {
             margin-top: 1.25rem;
             padding: 0.75rem;
@@ -120,6 +130,23 @@
         .logout-btn:hover {
             background: #334155;
         }
+
+        .link-btn {
+            background: none;
+            border: none;
+            color: #2563eb;
+            font-size: 0.85rem;
+            cursor: pointer;
+            padding: 0;
+            margin-top: 0.75rem;
+            width: auto;
+            font-weight: 500;
+        }
+
+        .link-btn:hover {
+            text-decoration: underline;
+            background: none;
+        }
     </style>
 </head>
 
@@ -130,7 +157,7 @@
         <h1>CareSight</h1>
         <p class="sub">Early Warning Score & Escalation Platform</p>
 
-        <div class="error" id="error-box"></div>
+        <div class="error" id="login-error"></div>
 
         <form id="login-form">
             <label for="username">Username</label>
@@ -142,11 +169,39 @@
             <button type="submit">Sign In</button>
         </form>
 
+        <div style="text-align: center;">
+            <button class="link-btn" onclick="showView('register')">Don't have an account? Sign up</button>
+        </div>
+
         <div class="demo-box">
-            <strong>Demo Accounts (password: <code>password123</code>):</strong><br />
-            • <code>nurse</code> (Nurse)<br />
-            • <code>clinician</code> (Clinician)<br />
-            • <code>admin</code> (Administrator)
+            <strong>Demo Clinician Account:</strong><br />
+            Username: <code>clinician</code> &nbsp; Password: <code>password123</code>
+        </div>
+    </div>
+
+    <!-- Register View -->
+    <div class="card" id="register-view" style="display: none;">
+        <h1>Create Account</h1>
+        <p class="sub">Register as a Patient</p>
+
+        <div class="error" id="register-error"></div>
+        <div class="success" id="register-success"></div>
+
+        <form id="register-form">
+            <label for="reg-name">Full Name</label>
+            <input type="text" id="reg-name" placeholder="Enter your full name" required />
+
+            <label for="reg-username">Username</label>
+            <input type="text" id="reg-username" placeholder="Choose a username" required />
+
+            <label for="reg-password">Password</label>
+            <input type="password" id="reg-password" placeholder="Minimum 6 characters" required minlength="6" />
+
+            <button type="submit">Create Account</button>
+        </form>
+
+        <div style="text-align: center;">
+            <button class="link-btn" onclick="showView('login')">Already have an account? Sign in</button>
         </div>
     </div>
 
@@ -162,14 +217,28 @@
     </div>
 
     <script>
-        const form = document.getElementById('login-form');
-        const errorBox = document.getElementById('error-box');
-        const loginView = document.getElementById('login-view');
-        const dashboardView = document.getElementById('dashboard-view');
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const loginError = document.getElementById('login-error');
+        const registerError = document.getElementById('register-error');
+        const registerSuccess = document.getElementById('register-success');
 
-        form.addEventListener('submit', async (e) => {
+        // ── View Switching ──
+        function showView(view) {
+            document.getElementById('login-view').style.display = view === 'login' ? 'block' : 'none';
+            document.getElementById('register-view').style.display = view === 'register' ? 'block' : 'none';
+            document.getElementById('dashboard-view').style.display = view === 'dashboard' ? 'block' : 'none';
+
+            // Clear messages when switching
+            loginError.style.display = 'none';
+            registerError.style.display = 'none';
+            registerSuccess.style.display = 'none';
+        }
+
+        // ── Login ──
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            errorBox.style.display = 'none';
+            loginError.style.display = 'none';
 
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
@@ -183,34 +252,63 @@
             const data = await res.json();
 
             if (!res.ok) {
-                errorBox.textContent = data.detail || 'Login failed';
-                errorBox.style.display = 'block';
+                loginError.textContent = data.detail || 'Login failed';
+                loginError.style.display = 'block';
                 return;
             }
 
             showDashboard(data);
         });
 
+        // ── Register ──
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            registerError.style.display = 'none';
+            registerSuccess.style.display = 'none';
+
+            const full_name = document.getElementById('reg-name').value;
+            const username = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, full_name })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                registerError.textContent = data.detail || 'Registration failed';
+                registerError.style.display = 'block';
+                return;
+            }
+
+            // Show success and switch to login after a moment
+            registerSuccess.textContent = `Account created! You can now sign in as "${data.username}".`;
+            registerSuccess.style.display = 'block';
+            registerForm.reset();
+
+            setTimeout(() => showView('login'), 2000);
+        });
+
+        // ── Dashboard ──
         function showDashboard(user) {
-            loginView.style.display = 'none';
-            dashboardView.style.display = 'block';
+            showView('dashboard');
             document.getElementById('user-role').textContent = user.role;
             document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
 
             const content = document.getElementById('role-content');
-            if (user.role === 'Nurse') {
-                content.innerHTML = '<strong>Ward Nurse View:</strong> Ready to view assigned ward patients and record 7 vital-sign observations.';
-            } else if (user.role === 'Clinician') {
-                content.innerHTML = '<strong>Clinician View:</strong> Ready to review NEWS2 escalation alerts and acknowledge patient responses.';
+            if (user.role === 'Clinician') {
+                content.innerHTML = '<strong>Clinician View:</strong> Ready to review patient NEWS2 scores, view escalation alerts, and record clinical responses.';
             } else {
-                content.innerHTML = '<strong>Administrator View:</strong> Ready to manage staff accounts, wards, and inspect the system audit log.';
+                content.innerHTML = '<strong>Patient View:</strong> Ready to view your health assessments and track your clinical observations.';
             }
         }
 
         function logout() {
-            form.reset();
-            dashboardView.style.display = 'none';
-            loginView.style.display = 'block';
+            loginForm.reset();
+            showView('login');
         }
     </script>
 </body>
