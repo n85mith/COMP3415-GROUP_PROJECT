@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+observations.json
+observations.json.tmp
+observations.corrupt-*.json
