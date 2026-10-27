@@ -48,14 +48,14 @@ pip install -r requirements-dev.txt
 uvicorn main:app --reload
 ```
 
-Open http://127.0.0.1:8000 and sign in with a demo account:
+Open http://127.0.0.1:8000 and sign in with a demo account. (If Windows reports an error about port 8000, use another port: `uvicorn main:app --port 8765` and open http://127.0.0.1:8765.)
 
 | Role | Username | Password |
 | :--- | :--- | :--- |
 | Nurse | `nurse` | `password123` |
 | Clinician | `clinician` | `password123` |
 
-Enter a patient ID (for example `P-001`) and the seven vital signs, then press **Save & Score**. Interactive API documentation is at http://127.0.0.1:8000/docs.
+Only the Nurse and Clinician accounts see the observation form; accounts made with **Sign up** are Patients and only see a welcome message. Enter a patient ID (for example `P-001`) and the seven vital signs, then press **Save & Score**. Interactive API documentation is at http://127.0.0.1:8000/docs.
 
 **Command-line entry** (no web server needed): `python observations.py`
 
