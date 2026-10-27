@@ -1,52 +1,70 @@
-def evaluate_result (aggregate_score: int, has_one_three: bool):
+"""Risk classification from the aggregate NEWS2 score (US-05, FR-07).
+
+Originally written by Clara (clara.py). Moved into the scoring package with
+cleaned-up result keys and spelling; the risk rules are unchanged. The
+thresholds come from scoring.bands so they are defined in one place.
+"""
+
+from scoring import bands
+
+
+def evaluate_result(aggregate_score: int, has_one_three: bool):
+    """Return the risk level, observation frequency and escalation decision.
+
+    aggregate_score: sum of the seven sub-scores.
+    has_one_three:   True if any single parameter scored 3.
     """
-    Evaluates the final aggregate score and returns the risk level, the required observation rate, and wheather an escalation alert is needet or not."""
 
-    if aggregate_score >=7:
-        risk_level = "high"
-        monitoring_frequency = "continuous monitoring"
+    if aggregate_score >= bands.HIGH_RISK_MIN_TOTAL:
+        risk_level = "High"
+        monitoring_frequency = "Continuous monitoring"
         hours_until_next_observation = 0
-        escalation_alert = True
-        response = "The patient requires immediate by a clinical team or an intensive care team, an will likely need to be transfered to a facility with a higher level of care"
+        escalation_required = True
+        response = (
+            "Emergency assessment by a clinical team with critical-care "
+            "competencies; the patient will probably need transfer to a "
+            "higher level of care."
+        )
 
-    elif aggregate_score in [5,6]:
-        risk_level = "medium"
-        monitoring_frequency = "minimum every hour"
+    elif aggregate_score >= bands.MEDIUM_RISK_MIN_TOTAL:
+        risk_level = "Medium"
+        monitoring_frequency = "Minimum every hour"
         hours_until_next_observation = 1
-        escalation_alert = True
-        response = "It is urgently necessary for a ward physician or a nurse from the acute care team to examine the patient in order to make a decision regarding whether the intensive care team should assess the patient's condiiton."
+        escalation_required = True
+        response = (
+            "Urgent review by a ward-based doctor or acute-care team nurse "
+            "to decide whether critical-care team assessment is needed."
+        )
 
     elif has_one_three:
-        risk_level = "low medium"
-        monitoring_frequency = "minimum every hour"
+        risk_level = "Low-medium"
+        monitoring_frequency = "Minimum every hour"
         hours_until_next_observation = 1
-        escalation_alert = True
-        response = "An evaluation by a ward physician is urgendly needet to determine the frequency of clinical monitoring and the level of care."
+        escalation_required = True
+        response = (
+            "Urgent ward-based doctor review to decide the frequency of "
+            "monitoring and the level of care."
+        )
 
-    else: 
-        risk_level = "low"
-        escalation_alert = False
-        response = "Assesment by a qualifide, licensed nurse or an equivalent professional to determine the frequency of clinical monitoring and the level of care."
+    else:
+        risk_level = "Low"
+        escalation_required = False
+        response = (
+            "Assessment by a competent registered nurse to decide the "
+            "frequency of monitoring and the level of care."
+        )
 
         if aggregate_score == 0:
-            monitoring_frequency = "minimum every 12 hours"
-            hours_until_next_observation = 12 
-
+            monitoring_frequency = "Minimum every 12 hours"
+            hours_until_next_observation = 12
         else:
-            monitoring_frequency = "every 4 hours"
+            monitoring_frequency = "Every 4 hours"
             hours_until_next_observation = 4
 
     return {
-        "Aggregate score" : (aggregate_score, has_one_three),
-        "Level of risk" : risk_level,
-        "Monitoring frequentcy" : monitoring_frequency,
-        "Hours until the next observation" : hours_until_next_observation,
-        "Escalation alert" : escalation_alert,
-        "Clinical response" : response
+        "risk_level": risk_level,
+        "monitoring_frequency": monitoring_frequency,
+        "hours_until_next_observation": hours_until_next_observation,
+        "escalation_required": escalation_required,
+        "clinical_response": response,
     }
-
-
-
-
-
-
