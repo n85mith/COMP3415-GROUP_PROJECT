@@ -147,6 +147,90 @@
             text-decoration: underline;
             background: none;
         }
+
+        /* ── Observation entry and score breakdown ── */
+        .card.wide {
+            max-width: 640px;
+        }
+
+        .obs-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0 1rem;
+        }
+
+        .obs-grid .full {
+            grid-column: 1 / -1;
+        }
+
+        select {
+            width: 100%;
+            padding: 0.65rem;
+            margin-bottom: 1rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            background: white;
+        }
+
+        .field-invalid {
+            border-color: #b91c1c;
+            background: #fef2f2;
+        }
+
+        .field-msg {
+            color: #b91c1c;
+            font-size: 0.75rem;
+            margin: -0.75rem 0 0.75rem;
+        }
+
+        table.breakdown {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin: 0.75rem 0;
+        }
+
+        table.breakdown th,
+        table.breakdown td {
+            text-align: left;
+            padding: 0.4rem 0.5rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        table.breakdown tr.three td {
+            background: #fee2e2;
+            color: #991b1b;
+            font-weight: 700;
+        }
+
+        .risk {
+            display: inline-block;
+            padding: 0.25rem 0.7rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .risk-Low {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .risk-Low-medium {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+
+        .risk-Medium {
+            background: #ffedd5;
+            color: #9a3412;
+        }
+
+        .risk-High {
+            background: #fee2e2;
+            color: #991b1b;
+        }
     </style>
 </head>
 
@@ -175,7 +259,9 @@
 
         <div class="demo-box">
             <strong>Demo Clinician Account:</strong><br />
-            Username: <code>clinician</code> &nbsp; Password: <code>password123</code>
+            Username: <code>clinician</code> &nbsp; Password: <code>password123</code><br />
+            <strong>Demo Nurse Account:</strong><br />
+            Username: <code>nurse</code> &nbsp; Password: <code>password123</code>
         </div>
     </div>
 
@@ -213,7 +299,64 @@
 
         <div class="panel" id="role-content"></div>
 
-        <button class="logout-btn" onclick="logout()">Sign Out</button>
+        <!-- Observation entry (Nurse / Clinician) -->
+        <div id="obs-section" style="display: none;">
+            <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
+            <div class="error" id="obs-error"></div>
+
+            <form id="obs-form" novalidate>
+                <div class="obs-grid">
+                    <div class="full">
+                        <label for="obs-patient_id">Patient ID (synthetic)</label>
+                        <input type="text" id="obs-patient_id" placeholder="e.g. P-001" />
+                    </div>
+                    <div>
+                        <label for="obs-respiratory_rate">Respiratory rate (breaths/min)</label>
+                        <input type="number" id="obs-respiratory_rate" placeholder="1 - 60" />
+                    </div>
+                    <div>
+                        <label for="obs-spo2">SpO2 (%)</label>
+                        <input type="number" id="obs-spo2" placeholder="50 - 100" />
+                    </div>
+                    <div>
+                        <label for="obs-supplemental_oxygen">Supplemental oxygen?</label>
+                        <select id="obs-supplemental_oxygen">
+                            <option value="">Select...</option>
+                            <option value="false">No (room air)</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="obs-systolic_bp">Systolic BP (mmHg)</label>
+                        <input type="number" id="obs-systolic_bp" placeholder="40 - 300" />
+                    </div>
+                    <div>
+                        <label for="obs-pulse">Pulse (beats/min)</label>
+                        <input type="number" id="obs-pulse" placeholder="20 - 250" />
+                    </div>
+                    <div>
+                        <label for="obs-consciousness">Consciousness</label>
+                        <select id="obs-consciousness">
+                            <option value="">Select...</option>
+                            <option value="A">A - Alert</option>
+                            <option value="C">C - New confusion</option>
+                            <option value="V">V - Responds to voice</option>
+                            <option value="P">P - Responds to pain</option>
+                            <option value="U">U - Unresponsive</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="obs-temperature">Temperature (&deg;C)</label>
+                        <input type="number" step="0.1" id="obs-temperature" placeholder="30.0 - 43.0" />
+                    </div>
+                </div>
+                <button type="submit">Save &amp; Score</button>
+            </form>
+
+            <div id="score-result" style="display: none;"></div>
+        </div>
+
+        <button class="logout-btn" style="margin-top: 1rem;" onclick="logout()">Sign Out</button>
     </div>
 
     <script>
@@ -293,22 +436,132 @@
         });
 
         // ── Dashboard ──
+        let currentUser = null;
+
         function showDashboard(user) {
+            currentUser = user;
             showView('dashboard');
             document.getElementById('user-role').textContent = user.role;
             document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
 
+            const isStaff = user.role === 'Nurse' || user.role === 'Clinician';
+            document.getElementById('dashboard-view').classList.toggle('wide', isStaff);
+            document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
+            resetObservationForm();
+
             const content = document.getElementById('role-content');
             if (user.role === 'Clinician') {
-                content.innerHTML = '<strong>Clinician View:</strong> Ready to review patient NEWS2 scores, view escalation alerts, and record clinical responses.';
+                content.innerHTML = '<strong>Clinician View:</strong> Record observations and review the NEWS2 score breakdown, risk level and escalation status below.';
+            } else if (user.role === 'Nurse') {
+                content.innerHTML = '<strong>Nurse View:</strong> Enter a patient\'s seven vital signs to see the NEWS2 score, risk level and when the next observation is due.';
             } else {
                 content.innerHTML = '<strong>Patient View:</strong> Ready to view your health assessments and track your clinical observations.';
             }
         }
 
         function logout() {
+            currentUser = null;
             loginForm.reset();
             showView('login');
+        }
+
+        // ── Observation entry and score breakdown (US-03 to US-06) ──
+        const obsForm = document.getElementById('obs-form');
+        const obsError = document.getElementById('obs-error');
+        const scoreResult = document.getElementById('score-result');
+        const OBS_NUMBER_FIELDS = ['respiratory_rate', 'spo2', 'systolic_bp', 'pulse', 'temperature'];
+        const OBS_FIELDS = ['respiratory_rate', 'spo2', 'supplemental_oxygen', 'systolic_bp', 'pulse', 'consciousness', 'temperature'];
+
+        function resetObservationForm() {
+            obsForm.reset();
+            obsError.style.display = 'none';
+            scoreResult.style.display = 'none';
+            clearFieldErrors();
+        }
+
+        function clearFieldErrors() {
+            obsForm.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
+            obsForm.querySelectorAll('.field-msg').forEach(el => el.remove());
+        }
+
+        function markInvalid(fieldId, message) {
+            const el = document.getElementById(`obs-${fieldId}`);
+            if (!el) return;
+            el.classList.add('field-invalid');
+            const msg = document.createElement('div');
+            msg.className = 'field-msg';
+            msg.textContent = message;
+            el.after(msg);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        obsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFieldErrors();
+            obsError.style.display = 'none';
+            scoreResult.style.display = 'none';
+
+            const body = {
+                patient_id: document.getElementById('obs-patient_id').value,
+                recorded_by: currentUser.username,
+            };
+            for (const id of OBS_FIELDS) {
+                const raw = document.getElementById(`obs-${id}`).value;
+                if (raw === '') continue;                       // left out: server reports it as missing
+                if (OBS_NUMBER_FIELDS.includes(id)) body[id] = Number(raw);
+                else if (id === 'supplemental_oxygen') body[id] = raw === 'true';
+                else body[id] = raw;
+            }
+
+            const res = await fetch('/api/observations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
+                obsError.style.display = 'block';
+                for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
+                return;
+            }
+
+            renderScore(data.score);
+        });
+
+        function renderScore(score) {
+            const rows = score.breakdown.map(row => {
+                let raw = row.raw_value;
+                if (typeof raw === 'boolean') raw = raw ? 'Yes' : 'No (air)';
+                return `<tr class="${row.scores_three ? 'three' : ''}">
+                    <td>${escapeHtml(row.label)}</td><td>${escapeHtml(raw)}</td><td>${row.sub_score}</td></tr>`;
+            }).join('');
+
+            const due = new Date(score.next_observation_due).toLocaleString();
+            const dueText = score.hours_until_next_observation === 0 ? 'Continuous monitoring' : due;
+
+            scoreResult.innerHTML = `
+                <h2 style="font-size: 1.1rem; color: #1e3a8a;">Observation saved</h2>
+                <span class="risk risk-${score.risk_level.replace(/\s+/g, '-')}">${escapeHtml(score.risk_level)} risk</span>
+                <strong style="margin-left: 0.5rem;">Total score: ${score.total_score}</strong>
+                <table class="breakdown">
+                    <tr><th>Parameter</th><th>Value</th><th>Score</th></tr>
+                    ${rows}
+                    <tr><th colspan="2">Total</th><th>${score.total_score}</th></tr>
+                </table>
+                <div class="panel">
+                    <strong>Monitoring:</strong> ${escapeHtml(score.monitoring_frequency)}<br />
+                    <strong>Next observation due:</strong> ${escapeHtml(dueText)}<br />
+                    <strong>Escalation required:</strong> ${score.escalation_required ? 'YES' : 'No'}<br />
+                    <strong>Recommended response:</strong> ${escapeHtml(score.clinical_response)}
+                </div>`;
+            scoreResult.style.display = 'block';
         }
     </script>
 </body>
