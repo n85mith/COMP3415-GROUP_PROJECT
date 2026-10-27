@@ -1,10 +1,9 @@
-# CareSight: Explainable Clinical Health Risk Screening and Patient Triage Platform
+# CareSight: Explainable Early Warning Score and Escalation Platform
 
 ## Project Overview
-**CareSight** is a full-stack clinical intake and health risk screening platform designed for primary care clinics and community health centers. Traditional medical risk calculators often function as "black boxes," providing static probabilities without actionable context. 
+**CareSight** is a ward-based clinical web application. Nurses record a patient's seven vital signs, and CareSight immediately calculates the **NEWS2** (National Early Warning Score 2, SpO2 Scale 1) sub-scores, the total, the risk level, the recommended clinical response and when the next observation is due. Every score is shown with its full breakdown, so staff can see *why* a patient scored as they did. All patient data is synthetic. CareSight is an educational simulation and is not for clinical use.
 
-CareSight bridges this gap by combining standardized physiological risk scoring with **transparent, factor-level feature attributions** (explainable AI). The platform enables clinical staff to conduct structured patient intakes, assess multi-disease risk profiles, view longitudinal health trajectories across visits, and export audit-logged clinical summary reports.
-
+The full requirements, user stories and plan are in the P1 report. The architecture, test plan, backlog and iteration review for P2 are in [`docs/`](docs/).
 
 ---
 
@@ -17,28 +16,80 @@ CareSight bridges this gap by combining standardized physiological risk scoring 
 | **Clara Kress** | `cjkress@lakeheadu.ca` | _Profile Link_ |
 | **Nischal Shrestha** | `nshrest2@lakeheadu.ca` | _Profile Link_ |
 
----
-
-##  Primary Users & Core Capabilities
-
-* **Triage Nurse / Medical Assistant**:
-  * Input patient demographics, vitals, and lifestyle markers into standardized digital intake forms.
-  * Initiate multi-condition risk assessments and view historical screening sessions.
-* **Clinician / Physician**:
-  * Inspect interpretable factor-attribution risk breakdowns to understand underlying risk drivers.
-  * Record clinical notes, apply diagnostic overrides, and export formatted assessment summaries.
-* **Clinic Administrator**:
-  * Manage staff credentials, assign role-based access control (RBAC), and monitor immutable compliance audit logs.
+Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 
 ---
 
-##  Preliminary Technology Stack
+## What works in this iteration (P2)
 
-* **Frontend**: React, TypeScript, Tailwind CSS
-* **Backend API**: Python (FastAPI)
-* **Risk & Explainability Engine**: Scikit-learn, ONNX Runtime, SHAP
-* **Database & ORM**: PostgreSQL, SQLAlchemy, Alembic (schema migrations)
-* **DevOps & QA**: Docker, PyTest, Jest, GitHub Actions (CI automated testing & linting)
+| User story | Feature | Where |
+| :--- | :--- | :--- |
+| US-01 (partial) | Login with salted password hashes; role returned (Nurse / Clinician / Patient) | `main.py`, `index.html` |
+| US-03 | Record the seven observations with validation, timestamp and recorder; invalid or incomplete sets are rejected and nothing is saved | `observations.py`, `main.py` |
+| US-04 | One NEWS2 scorer per parameter behind a common interface, with thresholds in one file | `scoring/scorers.py`, `scoring/bands.py` |
+| US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
+| US-06 | Score breakdown with raw values, sub-scores and total; parameters scoring 3 are highlighted | `index.html`, `scoring/news2.py` |
+
+Not yet built: patient records and wards (US-02), escalations (US-07/08), overdue flags (US-09), trends (US-10), audit log (US-11), admin pages (US-12), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
+## Running the system
+
+Requires Python 3.10 or newer.
+
+```bash
+# 1. Create a virtual environment and install dependencies
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+
+# 2. Start the web app
+uvicorn main:app --reload
+```
+
+Open http://127.0.0.1:8000 and sign in with a demo account:
+
+| Role | Username | Password |
+| :--- | :--- | :--- |
+| Nurse | `nurse` | `password123` |
+| Clinician | `clinician` | `password123` |
+
+Enter a patient ID (for example `P-001`) and the seven vital signs, then press **Save & Score**. Interactive API documentation is at http://127.0.0.1:8000/docs.
+
+**Command-line entry** (no web server needed): `python observations.py`
+
+Observations are saved to `observations.json` next to the code (ignored by git). It is replaced by a database in a later iteration.
+
+## Running the tests
+
+```bash
+pytest -v          # all automated tests
+flake8 .           # lint (also run in CI)
+```
+
+The test plan and the mapping from user stories to tests are in [`docs/TESTING.md`](docs/TESTING.md). GitHub Actions runs lint and the tests on every push and pull request (`.github/workflows/ci.yml`).
+
+## Project layout
+
+```
+main.py             FastAPI app: login, register, observation + history endpoints
+index.html          Single-page UI: sign in, observation entry, score breakdown
+observations.py     Observation fields, validation and JSON storage (also a CLI)
+scoring/
+  bands.py          NEWS2 thresholds (the one place they are defined)
+  scorers.py        One scorer class per parameter
+  risk.py           Risk level, frequency, escalation decision
+  news2.py          Aggregates sub-scores into the full result
+tests/              pytest suites
+docs/               Architecture, testing plan, backlog, iteration review
+```
+
+---
+
+##  Technology Stack
+
+* **Frontend**: HTML, CSS and vanilla JavaScript (single page)
+* **Backend API**: Python 3 with FastAPI
+* **Storage**: JSON file for this iteration (PostgreSQL planned)
+* **DevOps & QA**: pytest, flake8, GitHub Actions (CI)
