@@ -1,9 +1,3 @@
-"""Aggregate NEWS2 scoring: sub-scores, total, risk and next-due time.
-
-Scoring (scorers.py, bands.py) is kept separate from escalation routing
-(NFR-04): this module only calculates; it never notifies anyone.
-"""
-
 from datetime import datetime, timedelta
 
 from scoring import bands
@@ -12,12 +6,6 @@ from scoring.scorers import ALL_SCORERS
 
 
 def score_observation(observation):
-    """Score one observation dict and return the full breakdown (US-04/05/06).
-
-    The observation needs the seven vital-sign keys. If it has a
-    `recorded_at` ISO timestamp, the next-due time is calculated from it,
-    otherwise from the current time.
-    """
 
     breakdown = []
     sub_scores = {}

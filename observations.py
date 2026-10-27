@@ -1,13 +1,3 @@
-# ==========================================================
-# CareSight - Observation Input, Storage, and Output
-# Parts:
-# 1. Collect patient observations
-# 2. Validate the values
-# 3. Save the observation
-# 4. Display the saved observation
-# 5. Score the observation (scoring/ package, see score_observation)
-# ==========================================================
-
 import json
 import os
 from datetime import datetime
@@ -15,15 +5,10 @@ from datetime import datetime
 from scoring import score_observation
 
 
-# Always save next to this script, no matter which folder it is run from.
 OBSERVATIONS_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "observations.json"
 )
 
-# ----------------------------------------------------------
-# OBSERVATION FIELDS
-# These are the seven values a nurse records.
-# ----------------------------------------------------------
 
 OBSERVATION_FIELDS = [
     {
@@ -79,12 +64,7 @@ OBSERVATION_FIELDS = [
 ]
 
 
-# ----------------------------------------------------------
-# INPUT AND VALIDATION
-# ----------------------------------------------------------
-
 def get_valid_value(field):
-    """Ask repeatedly until the user enters a valid value for one field."""
 
     while True:
         answer = input(f"\n{field['label']}: ").strip()
@@ -128,30 +108,7 @@ def get_valid_value(field):
         return value
 
 
-############################################################
-############################################################
-##                                                        ##
-##   CORRECTION 2: NEW FUNCTION - get_required_text()     ##
-##                                                        ##
-##   BEFORE:                                              ##
-##       observation["patient_id"] =                      ##
-##           input("Enter patient ID: ").strip()          ##
-##                                                        ##
-##   PROBLEM:                                             ##
-##       Pressing Enter without typing anything saved     ##
-##       an observation with a BLANK patient ID or        ##
-##       staff username.                                  ##
-##                                                        ##
-##   FIX:                                                 ##
-##       This function keeps asking until something is    ##
-##       typed. It is used in collect_observation()       ##
-##       below.                                           ##
-##                                                        ##
-############################################################
-############################################################
-
 def get_required_text(prompt):
-    """Ask repeatedly until the user enters a non-empty value."""
 
     while True:
         answer = input(prompt).strip()
@@ -163,17 +120,9 @@ def get_required_text(prompt):
 
 
 def collect_observation():
-    """Collect a patient ID and all seven observation values."""
 
     observation = {}
 
-    ########################################################
-    ##                                                    ##
-    ##   CORRECTION 2 (continued):                        ##
-    ##   These two lines now use get_required_text()      ##
-    ##   instead of input(), so they cannot be blank.     ##
-    ##                                                    ##
-    ########################################################
     observation["patient_id"] = get_required_text("Enter patient ID: ")
     observation["recorded_by"] = get_required_text("Enter your staff username: ")
     observation["recorded_at"] = datetime.now().isoformat()
@@ -184,45 +133,7 @@ def collect_observation():
     return observation
 
 
-# ----------------------------------------------------------
-# STORAGE
-# Saves observations locally as JSON.
-# Later, this can be replaced with a database.
-# ----------------------------------------------------------
-
-############################################################
-############################################################
-##                                                        ##
-##   CORRECTION 3: NEW FUNCTION - load_observations()     ##
-##   *** THIS WAS THE MAIN BUG ***                        ##
-##                                                        ##
-##   BEFORE (inside save_observation):                    ##
-##       try:                                             ##
-##           observations = json.load(file)               ##
-##       except json.JSONDecodeError:                     ##
-##           observations = []                            ##
-##                                                        ##
-##   PROBLEM:                                             ##
-##       If observations.json could not be read (for      ##
-##       example, the program was stopped half-way        ##
-##       through saving), the code silently started an    ##
-##       EMPTY list and then saved over the file.         ##
-##       Every earlier observation was DELETED and only   ##
-##       the newest one remained.                         ##
-##                                                        ##
-##   FIX:                                                 ##
-##       If the file is damaged, rename it to             ##
-##       observations.corrupt-<date-time>.json (so the    ##
-##       old data is kept), print a warning, and start    ##
-##       a new file. Reading the file now happens in      ##
-##       ONE place, used by both save_observation() and   ##
-##       get_observations_for_patient().                  ##
-##                                                        ##
-############################################################
-############################################################
-
 def load_observations():
-    """Return the list of saved observations (empty if there are none)."""
 
     if not os.path.exists(OBSERVATIONS_FILE):
         return []
@@ -236,8 +147,6 @@ def load_observations():
     if isinstance(observations, list):
         return observations
 
-    # The file is damaged. Keep a copy instead of overwriting it,
-    # so no earlier observations are lost.
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_file = OBSERVATIONS_FILE.replace(".json", f".corrupt-{timestamp}.json")
     os.replace(OBSERVATIONS_FILE, backup_file)
@@ -248,44 +157,10 @@ def load_observations():
 
 
 def save_observation(observation):
-    """Append an observation to observations.json."""
 
-    ########################################################
-    ##                                                    ##
-    ##   CORRECTION 3 (continued):                        ##
-    ##   The old try/except that reset the list to []     ##
-    ##   was removed from here. It now calls              ##
-    ##   load_observations(), which never wipes data.     ##
-    ##                                                    ##
-    ########################################################
     observations = load_observations()
     observations.append(observation)
 
-    ########################################################
-    ##                                                    ##
-    ##   CORRECTION 4: SAFER SAVING                       ##
-    ##                                                    ##
-    ##   BEFORE:                                          ##
-    ##       with open(OBSERVATIONS_FILE, "w") as file:   ##
-    ##           json.dump(observations, file, indent=4)  ##
-    ##                                                    ##
-    ##   PROBLEM:                                         ##
-    ##       Opening with "w" empties the file straight   ##
-    ##       away. If the program stopped before          ##
-    ##       json.dump finished, the file was left empty  ##
-    ##       or half-written (which then triggered the    ##
-    ##       data-wiping bug in Correction 3).            ##
-    ##                                                    ##
-    ##   FIX:                                             ##
-    ##       Write to observations.json.tmp first, then   ##
-    ##       os.replace() swaps it in. The real file is   ##
-    ##       always either the old version or the new     ##
-    ##       complete version, never half-written.        ##
-    ##                                                    ##
-    ########################################################
-
-    # Write to a temporary file first, then swap it in, so the real
-    # file is never left half-written if the program is interrupted.
     temp_file = OBSERVATIONS_FILE + ".tmp"
 
     with open(temp_file, "w") as file:
@@ -297,22 +172,7 @@ def save_observation(observation):
 
 
 def get_observations_for_patient(patient_id):
-    """Return every saved observation for one patient."""
 
-    ########################################################
-    ##                                                    ##
-    ##   CORRECTION 5: SIMPLER FILE READING               ##
-    ##                                                    ##
-    ##   BEFORE:                                          ##
-    ##       This function had its own copy of the        ##
-    ##       "check file exists / open / json.load /      ##
-    ##       except JSONDecodeError" code.                ##
-    ##                                                    ##
-    ##   FIX:                                             ##
-    ##       It now calls load_observations(), so the     ##
-    ##       file is read the same safe way everywhere.   ##
-    ##                                                    ##
-    ########################################################
     observations = load_observations()
     patient_observations = []
 
@@ -323,15 +183,7 @@ def get_observations_for_patient(patient_id):
     return patient_observations
 
 
-# ----------------------------------------------------------
-# API VALIDATION
-# The command-line prompts above validate one value at a time. The web API
-# receives all values at once, so this checks a whole dict against the same
-# OBSERVATION_FIELDS rules and returns {field_id: message} for every problem.
-# ----------------------------------------------------------
-
 def validate_observation_values(values):
-    """Return a dict of field errors; an empty dict means the values are valid."""
 
     errors = {}
 
@@ -365,12 +217,7 @@ def validate_observation_values(values):
     return errors
 
 
-# ----------------------------------------------------------
-# OUTPUT
-# ----------------------------------------------------------
-
 def display_observation(observation, score_result):
-    """Display the saved observation and the scorer's result."""
 
     print("\n==============================")
     print("Observation Saved")
@@ -406,34 +253,9 @@ def display_observation(observation, score_result):
     print("Clinical response:", score_result["clinical_response"])
 
 
-# ----------------------------------------------------------
-# MAIN PROGRAM
-# ----------------------------------------------------------
-
 def main():
     print("Welcome to CareSight Observation Entry")
 
-    ########################################################
-    ##                                                    ##
-    ##   CORRECTION 6: CANCELLING AND SAVE MESSAGE        ##
-    ##                                                    ##
-    ##   BEFORE:                                          ##
-    ##       observation = collect_observation()          ##
-    ##       save_observation(observation)                ##
-    ##                                                    ##
-    ##   PROBLEM:                                         ##
-    ##       Pressing Ctrl+C or Ctrl+D during entry       ##
-    ##       crashed the program with a long error, and   ##
-    ##       there was no message saying WHERE the file   ##
-    ##       was saved.                                   ##
-    ##                                                    ##
-    ##   FIX:                                             ##
-    ##       try/except catches the cancel and prints     ##
-    ##       "Entry cancelled. Nothing was saved."        ##
-    ##       After saving, the full file path is printed  ##
-    ##       so you can see exactly where it went.        ##
-    ##                                                    ##
-    ########################################################
     try:
         observation = collect_observation()
     except (KeyboardInterrupt, EOFError):

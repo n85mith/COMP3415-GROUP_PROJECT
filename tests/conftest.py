@@ -7,7 +7,6 @@ from main import app
 
 @pytest.fixture(autouse=True)
 def isolated_observations_file(tmp_path, monkeypatch):
-    """Every test writes to its own temporary observations.json."""
     monkeypatch.setattr(observations, "OBSERVATIONS_FILE", str(tmp_path / "observations.json"))
 
 
@@ -18,7 +17,6 @@ def client():
 
 @pytest.fixture
 def normal_values():
-    """A fully normal set of vitals: every sub-score is 0."""
     return {
         "respiratory_rate": 16,
         "spo2": 98,

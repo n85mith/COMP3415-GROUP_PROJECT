@@ -1,27 +1,19 @@
-"""One scorer per NEWS2 parameter, all behind a common interface (US-04).
-
-Every scorer has a `key` (the observation field it reads), a `label` for
-display, and a `score(value)` method returning an int from 0 to 3.
-"""
-
 from abc import ABC, abstractmethod
 
 from scoring import bands
 
 
 class ParameterScorer(ABC):
-    """Common interface for every parameter scorer."""
 
     key = ""
     label = ""
 
     @abstractmethod
     def score(self, value):
-        """Return the NEWS2 sub-score (0-3) for one raw value."""
+        pass
 
 
 class BandScorer(ParameterScorer):
-    """Scores a numeric value against an ordered list of bands."""
 
     bands = []
 
@@ -62,8 +54,6 @@ class TemperatureScorer(BandScorer):
     bands = bands.TEMPERATURE_BANDS
 
     def score(self, value):
-        # The chart uses one decimal place; rounding stops float noise such
-        # as 36.1000000001 from landing in the wrong band.
         return super().score(round(value, 1))
 
 
@@ -89,7 +79,6 @@ class ConsciousnessScorer(ParameterScorer):
         raise ValueError(f"Unknown consciousness level: {value!r}")
 
 
-# Display order matches the NEWS2 chart.
 ALL_SCORERS = [
     RespiratoryRateScorer(),
     Spo2Scorer(),

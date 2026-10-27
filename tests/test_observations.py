@@ -1,5 +1,3 @@
-"""Validation and storage of observations (US-03)."""
-
 import json
 
 import observations
@@ -16,7 +14,7 @@ def test_missing_parameter_is_reported(normal_values):
 
 
 def test_out_of_range_value_is_reported(normal_values):
-    normal_values["respiratory_rate"] = 200           # P1 AC example
+    normal_values["respiratory_rate"] = 200
     errors = validate_observation_values(normal_values)
     assert list(errors) == ["respiratory_rate"]
 
@@ -25,7 +23,7 @@ def test_wrong_types_are_reported(normal_values):
     normal_values["spo2"] = "high"
     normal_values["supplemental_oxygen"] = "yes"
     normal_values["consciousness"] = "X"
-    normal_values["pulse"] = 70.5                     # must be whole number
+    normal_values["pulse"] = 70.5
     errors = validate_observation_values(normal_values)
     assert set(errors) == {"spo2", "supplemental_oxygen", "consciousness", "pulse"}
 

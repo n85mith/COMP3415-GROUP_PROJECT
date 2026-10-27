@@ -148,7 +148,6 @@
             background: none;
         }
 
-        /* ── Observation entry and score breakdown ── */
         .card.wide {
             max-width: 640px;
         }
@@ -236,7 +235,6 @@
 
 <body>
 
-    <!-- Login View -->
     <div class="card" id="login-view">
         <h1>CareSight</h1>
         <p class="sub">Early Warning Score & Escalation Platform</p>
@@ -265,7 +263,6 @@
         </div>
     </div>
 
-    <!-- Register View -->
     <div class="card" id="register-view" style="display: none;">
         <h1>Create Account</h1>
         <p class="sub">Register as a Patient</p>
@@ -291,7 +288,6 @@
         </div>
     </div>
 
-    <!-- Dashboard View (Hidden until login) -->
     <div class="card" id="dashboard-view" style="display: none;">
         <span class="badge" id="user-role"></span>
         <h1 id="welcome-name" style="margin-top: 0.5rem;"></h1>
@@ -299,7 +295,6 @@
 
         <div class="panel" id="role-content"></div>
 
-        <!-- Observation entry (Nurse / Clinician) -->
         <div id="obs-section" style="display: none;">
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
             <div class="error" id="obs-error"></div>
@@ -366,19 +361,16 @@
         const registerError = document.getElementById('register-error');
         const registerSuccess = document.getElementById('register-success');
 
-        // ── View Switching ──
         function showView(view) {
             document.getElementById('login-view').style.display = view === 'login' ? 'block' : 'none';
             document.getElementById('register-view').style.display = view === 'register' ? 'block' : 'none';
             document.getElementById('dashboard-view').style.display = view === 'dashboard' ? 'block' : 'none';
 
-            // Clear messages when switching
             loginError.style.display = 'none';
             registerError.style.display = 'none';
             registerSuccess.style.display = 'none';
         }
 
-        // ── Login ──
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             loginError.style.display = 'none';
@@ -403,7 +395,6 @@
             showDashboard(data);
         });
 
-        // ── Register ──
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             registerError.style.display = 'none';
@@ -427,7 +418,6 @@
                 return;
             }
 
-            // Show success and switch to login after a moment
             registerSuccess.textContent = `Account created! You can now sign in as "${data.username}".`;
             registerSuccess.style.display = 'block';
             registerForm.reset();
@@ -435,7 +425,6 @@
             setTimeout(() => showView('login'), 2000);
         });
 
-        // ── Dashboard ──
         let currentUser = null;
 
         function showDashboard(user) {
@@ -465,7 +454,6 @@
             showView('login');
         }
 
-        // ── Observation entry and score breakdown (US-03 to US-06) ──
         const obsForm = document.getElementById('obs-form');
         const obsError = document.getElementById('obs-error');
         const scoreResult = document.getElementById('score-result');
@@ -512,7 +500,7 @@
             };
             for (const id of OBS_FIELDS) {
                 const raw = document.getElementById(`obs-${id}`).value;
-                if (raw === '') continue;                       // left out: server reports it as missing
+                if (raw === '') continue;
                 if (OBS_NUMBER_FIELDS.includes(id)) body[id] = Number(raw);
                 else if (id === 'supplemental_oxygen') body[id] = raw === 'true';
                 else body[id] = raw;

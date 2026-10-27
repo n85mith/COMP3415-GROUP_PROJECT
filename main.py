@@ -15,7 +15,6 @@ from scoring import score_observation
 app = FastAPI(title="CareSight")
 
 
-# ── Password hashing (NFR-06: salted hashes only) ──
 def hash_password(password: str, salt: Optional[bytes] = None) -> str:
     salt = salt or os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100_000)
@@ -28,7 +27,6 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(expected, stored)
 
 
-# Pre-seeded staff accounts — patients register themselves
 USERS = {
     "clinician": {"password": hash_password("password123"), "role": "Clinician", "name": "Dr. Aris Thorne"},
     "nurse": {"password": hash_password("password123"), "role": "Nurse", "name": "Nurse Jordan Lee"},
@@ -47,8 +45,6 @@ class RegisterRequest(BaseModel):
 
 
 class ObservationRequest(BaseModel):
-    """Raw observation values. Types are checked by observations.validate_observation_values
-    so that every problem field is reported together (US-03)."""
     patient_id: str = ""
     recorded_by: str = ""
     respiratory_rate: Optional[Any] = None
@@ -104,7 +100,6 @@ def login(data: LoginRequest):
     }
 
 
-# ── Observations and NEWS2 scoring (US-03, US-04, US-05, US-06) ──
 @app.post("/api/observations")
 def record_observation(data: ObservationRequest):
     values = data.model_dump()
@@ -117,7 +112,6 @@ def record_observation(data: ObservationRequest):
     errors.update(observations.validate_observation_values(values))
 
     if errors:
-        # Nothing is saved when any field is invalid or missing.
         return JSONResponse(status_code=422, content={"detail": "Invalid observation", "errors": errors})
 
     observation = {

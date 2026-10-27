@@ -1,5 +1,3 @@
-"""Aggregate scoring, risk level and breakdown (US-05, US-06)."""
-
 from datetime import datetime
 
 import pytest
@@ -8,12 +6,10 @@ from scoring import score_observation
 from scoring.risk import evaluate_result
 
 
-# ── US-05: risk level and observation frequency ──
-
 def test_total_4_no_three_is_low_every_4_hours():
     result = evaluate_result(4, has_one_three=False)
     assert result["risk_level"] == "Low"
-    assert result["hours_until_next_observation"] == 4       # within 6 hours
+    assert result["hours_until_next_observation"] == 4
     assert result["escalation_required"] is False
 
 
@@ -52,8 +48,6 @@ def test_total_4_boundary_does_not_escalate():
     assert evaluate_result(5, False)["escalation_required"] is True
 
 
-# ── End-to-end through score_observation ──
-
 def test_all_normal_observation_scores_zero(normal_values):
     result = score_observation(normal_values)
     assert result["total_score"] == 0
@@ -62,7 +56,7 @@ def test_all_normal_observation_scores_zero(normal_values):
 
 
 def test_single_three_gives_low_medium(normal_values):
-    normal_values["consciousness"] = "C"              # new confusion -> 3
+    normal_values["consciousness"] = "C"
     result = score_observation(normal_values)
     assert result["total_score"] == 3
     assert result["parameters_scoring_three"] == ["consciousness"]
@@ -72,20 +66,18 @@ def test_single_three_gives_low_medium(normal_values):
 
 def test_deteriorating_patient_is_high_risk():
     result = score_observation({
-        "respiratory_rate": 26,       # 3
-        "spo2": 90,                   # 3
-        "supplemental_oxygen": True,  # 2
-        "systolic_bp": 88,            # 3
-        "pulse": 135,                 # 3
-        "consciousness": "V",         # 3
-        "temperature": 39.5,          # 2
+        "respiratory_rate": 26,
+        "spo2": 90,
+        "supplemental_oxygen": True,
+        "systolic_bp": 88,
+        "pulse": 135,
+        "consciousness": "V",
+        "temperature": 39.5,
     })
     assert result["total_score"] == 19
     assert result["risk_level"] == "High"
     assert len(result["parameters_scoring_three"]) == 5
 
-
-# ── US-06: breakdown ──
 
 def test_breakdown_lists_seven_parameters_with_raw_values(normal_values):
     result = score_observation(normal_values)
@@ -109,10 +101,8 @@ def test_parameter_scoring_three_is_flagged_for_highlighting(normal_values):
     assert rows["pulse"]["scores_three"] is False
 
 
-# ── Next observation due time ──
-
 def test_next_due_is_calculated_from_recorded_time(normal_values):
     normal_values["recorded_at"] = "2026-10-26T08:00:00"
-    normal_values["pulse"] = 95                       # 1 point -> Low, 4 hours
+    normal_values["pulse"] = 95
     result = score_observation(normal_values)
     assert datetime.fromisoformat(result["next_observation_due"]) == datetime(2026, 10, 26, 12, 0)

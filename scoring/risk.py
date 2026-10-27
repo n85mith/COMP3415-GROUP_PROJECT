@@ -1,19 +1,7 @@
-"""Risk classification from the aggregate NEWS2 score (US-05, FR-07).
-
-Originally written by Clara (clara.py). Moved into the scoring package with
-cleaned-up result keys and spelling; the risk rules are unchanged. The
-thresholds come from scoring.bands so they are defined in one place.
-"""
-
 from scoring import bands
 
 
 def evaluate_result(aggregate_score: int, has_one_three: bool):
-    """Return the risk level, observation frequency and escalation decision.
-
-    aggregate_score: sum of the seven sub-scores.
-    has_one_three:   True if any single parameter scored 3.
-    """
 
     if aggregate_score >= bands.HIGH_RISK_MIN_TOTAL:
         risk_level = "High"
