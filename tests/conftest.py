@@ -1,4 +1,8 @@
+from copy import deepcopy
+
 import pytest
+
+import auth
 from fastapi.testclient import TestClient
 
 import observations
@@ -31,3 +35,17 @@ def normal_values():
 @pytest.fixture
 def valid_request(normal_values):
     return {"patient_id": "P-001", "recorded_by": "nurse", **normal_values}
+
+
+@pytest.fixture(autouse=True)
+def isolated_auth(monkeypatch):
+    monkeypatch.setattr(auth, "_sessions", {})
+    monkeypatch.setattr(auth, "USERS", deepcopy(auth.USERS))
+    monkeypatch.setattr("main.USERS", auth.USERS)
+
+
+@pytest.fixture
+def staff_client(client):
+    response = client.post("/api/login", json={"username": "nurse", "password": "password123"})
+    client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
+    return client

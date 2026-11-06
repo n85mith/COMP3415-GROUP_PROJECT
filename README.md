@@ -24,7 +24,7 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 
 | User story | Feature | Where |
 | :--- | :--- | :--- |
-| US-01 (partial) | Login with salted password hashes; role returned (Nurse / Clinician / Patient) | `main.py`, `index.html` |
+| US-01 | Login with expiring session tokens and server-side Nurse / Clinician / Admin role checks | `main.py`, `index.html` |
 | US-03 | Record the seven observations with validation, timestamp and recorder; invalid or incomplete sets are rejected and nothing is saved | `observations.py`, `main.py` |
 | US-04 | One NEWS2 scorer per parameter behind a common interface, with thresholds in one file | `scoring/scorers.py`, `scoring/bands.py` |
 | US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
@@ -54,8 +54,9 @@ Open http://127.0.0.1:8000 and sign in with a demo account. (If Windows reports 
 | :--- | :--- | :--- |
 | Nurse | `nurse` | `password123` |
 | Clinician | `clinician` | `password123` |
+| Admin | `admin` | `password123` |
 
-Only the Nurse and Clinician accounts see the observation form; accounts made with **Sign up** are Patients and only see a welcome message. Enter a patient ID (for example `P-001`) and the seven vital signs, then press **Save & Score**. Interactive API documentation is at http://127.0.0.1:8000/docs.
+Nurse and Clinician accounts can record and read observations. Admin accounts are reserved for administration and cannot access clinical endpoints. Patient self-registration has been removed. Enter a patient ID (for example `P-001`) and the seven vital signs, then press **Save & Score**. Interactive API documentation is at http://127.0.0.1:8000/docs.
 
 **Command-line entry** (no web server needed): `python observations.py`
 
@@ -73,7 +74,8 @@ The test plan and the mapping from user stories to tests are in [`docs/TESTING.m
 ## Project layout
 
 ```
-main.py             FastAPI app: login, register, observation + history endpoints
+auth.py             Shared session management and require_role dependency
+main.py             FastAPI app: login, logout, observation + history endpoints
 index.html          Single-page UI: sign in, observation entry, score breakdown
 observations.py     Observation fields, validation and JSON storage (also a CLI)
 scoring/
@@ -93,3 +95,7 @@ docs/               Architecture, testing plan, backlog, iteration review
 * **Backend API**: Python 3 with FastAPI
 * **Storage**: JSON file for this iteration (PostgreSQL planned)
 * **DevOps & QA**: pytest, flake8, GitHub Actions (CI)
+
+## Authentication
+
+Login returns an eight-hour bearer token. The browser holds it in memory, so refreshing requires signing in again. Sign out revokes the token on the server. Run one server worker because sessions are currently stored in memory and are cleared on restart. See [the shared authentication helper](docs/AUTH.md) for endpoint integration and the access matrix.

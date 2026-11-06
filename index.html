@@ -84,16 +84,6 @@
             display: none;
         }
 
-        .success {
-            background: #dcfce7;
-            color: #166534;
-            padding: 0.65rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            margin-bottom: 1rem;
-            display: none;
-        }
-
         .demo-box {
             margin-top: 1.25rem;
             padding: 0.75rem;
@@ -129,23 +119,6 @@
 
         .logout-btn:hover {
             background: #334155;
-        }
-
-        .link-btn {
-            background: none;
-            border: none;
-            color: #2563eb;
-            font-size: 0.85rem;
-            cursor: pointer;
-            padding: 0;
-            margin-top: 0.75rem;
-            width: auto;
-            font-weight: 500;
-        }
-
-        .link-btn:hover {
-            text-decoration: underline;
-            background: none;
         }
 
         .card.wide {
@@ -251,40 +224,11 @@
             <button type="submit">Sign In</button>
         </form>
 
-        <div style="text-align: center;">
-            <button class="link-btn" onclick="showView('register')">Don't have an account? Sign up</button>
-        </div>
-
         <div class="demo-box">
             <strong>Demo Clinician Account:</strong><br />
             Username: <code>clinician</code> &nbsp; Password: <code>password123</code><br />
             <strong>Demo Nurse Account:</strong><br />
             Username: <code>nurse</code> &nbsp; Password: <code>password123</code>
-        </div>
-    </div>
-
-    <div class="card" id="register-view" style="display: none;">
-        <h1>Create Account</h1>
-        <p class="sub">Register as a Patient</p>
-
-        <div class="error" id="register-error"></div>
-        <div class="success" id="register-success"></div>
-
-        <form id="register-form">
-            <label for="reg-name">Full Name</label>
-            <input type="text" id="reg-name" placeholder="Enter your full name" required />
-
-            <label for="reg-username">Username</label>
-            <input type="text" id="reg-username" placeholder="Choose a username" required />
-
-            <label for="reg-password">Password</label>
-            <input type="password" id="reg-password" placeholder="Minimum 6 characters" required minlength="6" />
-
-            <button type="submit">Create Account</button>
-        </form>
-
-        <div style="text-align: center;">
-            <button class="link-btn" onclick="showView('login')">Already have an account? Sign in</button>
         </div>
     </div>
 
@@ -295,9 +239,10 @@
 
         <div class="panel" id="role-content"></div>
 
+        <div class="error" id="obs-error"></div>
+
         <div id="obs-section" style="display: none;">
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
-            <div class="error" id="obs-error"></div>
 
             <form id="obs-form" novalidate>
                 <div class="obs-grid">
@@ -356,19 +301,13 @@
 
     <script>
         const loginForm = document.getElementById('login-form');
-        const registerForm = document.getElementById('register-form');
         const loginError = document.getElementById('login-error');
-        const registerError = document.getElementById('register-error');
-        const registerSuccess = document.getElementById('register-success');
 
         function showView(view) {
             document.getElementById('login-view').style.display = view === 'login' ? 'block' : 'none';
-            document.getElementById('register-view').style.display = view === 'register' ? 'block' : 'none';
             document.getElementById('dashboard-view').style.display = view === 'dashboard' ? 'block' : 'none';
 
             loginError.style.display = 'none';
-            registerError.style.display = 'none';
-            registerSuccess.style.display = 'none';
         }
 
         loginForm.addEventListener('submit', async (e) => {
@@ -378,57 +317,33 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
 
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
 
-            const data = await res.json();
+                const data = await res.json();
 
-            if (!res.ok) {
-                loginError.textContent = data.detail || 'Login failed';
+                if (!res.ok) {
+                    loginError.textContent = data.detail || 'Login failed';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                showDashboard(data);
+            } catch (error) {
+                loginError.textContent = 'Unable to sign in. Check your connection and try again.';
                 loginError.style.display = 'block';
-                return;
             }
-
-            showDashboard(data);
         });
 
-        registerForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            registerError.style.display = 'none';
-            registerSuccess.style.display = 'none';
-
-            const full_name = document.getElementById('reg-name').value;
-            const username = document.getElementById('reg-username').value;
-            const password = document.getElementById('reg-password').value;
-
-            const res = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, full_name })
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                registerError.textContent = data.detail || 'Registration failed';
-                registerError.style.display = 'block';
-                return;
-            }
-
-            registerSuccess.textContent = `Account created! You can now sign in as "${data.username}".`;
-            registerSuccess.style.display = 'block';
-            registerForm.reset();
-
-            setTimeout(() => showView('login'), 2000);
-        });
-
-        let currentUser = null;
+        let sessionToken = null;
 
         function showDashboard(user) {
-            currentUser = user;
+            sessionToken = user.access_token;
+            loginForm.reset();
             showView('dashboard');
             document.getElementById('user-role').textContent = user.role;
             document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
@@ -444,14 +359,29 @@
             } else if (user.role === 'Nurse') {
                 content.innerHTML = '<strong>Nurse View:</strong> Enter a patient\'s seven vital signs to see the NEWS2 score, risk level and when the next observation is due.';
             } else {
-                content.innerHTML = '<strong>Patient View:</strong> Ready to view your health assessments and track your clinical observations.';
+                content.textContent = 'Administrator account. Staff and ward management will be available in a later iteration.';
             }
         }
 
-        function logout() {
-            currentUser = null;
+        function clearSession() {
+            sessionToken = null;
             loginForm.reset();
+            resetObservationForm();
             showView('login');
+        }
+
+        async function logout() {
+            try {
+                const res = await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${sessionToken}` }
+                });
+                if (!res.ok && res.status !== 401) throw new Error('Sign out failed');
+                clearSession();
+            } catch (error) {
+                obsError.textContent = 'Unable to sign out. Check your connection and try again.';
+                obsError.style.display = 'block';
+            }
         }
 
         const obsForm = document.getElementById('obs-form');
@@ -496,7 +426,6 @@
 
             const body = {
                 patient_id: document.getElementById('obs-patient_id').value,
-                recorded_by: currentUser.username,
             };
             for (const id of OBS_FIELDS) {
                 const raw = document.getElementById(`obs-${id}`).value;
@@ -506,21 +435,40 @@
                 else body[id] = raw;
             }
 
-            const res = await fetch('/api/observations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            const data = await res.json();
+            try {
+                const res = await fetch('/api/observations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${sessionToken}`
+                    },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
 
-            if (!res.ok) {
-                obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
+                if (res.status === 401) {
+                    clearSession();
+                    loginError.textContent = 'Your session has ended. Please sign in again.';
+                    loginError.style.display = 'block';
+                    return;
+                }
+                if (res.status === 403) {
+                    obsError.textContent = 'Your account does not have permission to record observations.';
+                    obsError.style.display = 'block';
+                    return;
+                }
+                if (!res.ok) {
+                    obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
+                    obsError.style.display = 'block';
+                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
+                    return;
+                }
+
+                renderScore(data.score);
+            } catch (error) {
+                obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
                 obsError.style.display = 'block';
-                for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
-                return;
             }
-
-            renderScore(data.score);
         });
 
         function renderScore(score) {
