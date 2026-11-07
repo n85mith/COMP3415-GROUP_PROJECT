@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import observations
+import patients
 from auth import (
     ROLES, SESSION_TTL_SECONDS, USERS, bearer_scheme, create_session, get_current_user,
     require_role, revoke_session, verify_password,
@@ -20,6 +21,13 @@ app = FastAPI(title="CareSight")
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class PatientRequest(BaseModel):
+    patient_id: Optional[Any] = None
+    name: Optional[Any] = None
+    ward: Optional[Any] = None
+    bed: Optional[Any] = None
 
 
 class ObservationRequest(BaseModel):
@@ -74,6 +82,8 @@ def record_observation(
 
     if not values["patient_id"].strip():
         errors["patient_id"] = "This field is required."
+    elif not patients.patient_exists(values["patient_id"]):
+        errors["patient_id"] = "Unknown patient ID. Create the patient first."
 
     errors.update(observations.validate_observation_values(values))
 
@@ -81,7 +91,7 @@ def record_observation(
         return JSONResponse(status_code=422, content={"detail": "Invalid observation", "errors": errors})
 
     observation = {
-        "patient_id": values["patient_id"].strip(),
+        "patient_id": patients.normalize_patient_id(values["patient_id"]),
         "recorded_by": user["username"],
         "recorded_at": datetime.now().isoformat(),
     }
@@ -98,5 +108,59 @@ def patient_history(
     patient_id: str,
     user: dict = Depends(require_role("Nurse", "Clinician")),
 ):
-    history = observations.get_observations_for_patient(patient_id)
+    history = observations.get_observations_for_patient(patients.normalize_patient_id(patient_id))
     return [{"observation": obs, "score": score_observation(obs)} for obs in history]
+
+
+@app.post("/api/patients", status_code=201)
+def create_patient(
+    data: PatientRequest,
+    user: dict = Depends(require_role("Nurse", "Clinician")),
+):
+    values = data.model_dump()
+    errors = patients.validate_patient(values)
+
+    if errors:
+        return JSONResponse(status_code=422, content={"detail": "Invalid patient", "errors": errors})
+
+    try:
+        return patients.create_patient(values)
+    except patients.DuplicatePatientError as err:
+        return JSONResponse(status_code=409, content={"detail": err.message, "errors": {err.field: err.message}})
+
+
+@app.get("/api/patients")
+def list_patients(
+    ward: Optional[str] = None,
+    user: dict = Depends(require_role("Nurse", "Clinician")),
+):
+    return patients.list_patients(ward)
+
+
+@app.get("/api/wards")
+def list_wards(user: dict = Depends(require_role("Nurse", "Clinician"))):
+    return patients.list_wards()
+
+
+@app.get("/api/ward-list")
+def ward_list(
+    ward: Optional[str] = None,
+    user: dict = Depends(require_role("Nurse", "Clinician")),
+):
+    rows = []
+
+    for patient in patients.list_patients(ward):
+        history = observations.get_observations_for_patient(patient["patient_id"])
+        latest = max(reversed(history), key=lambda obs: obs["recorded_at"]) if history else None
+        score = score_observation(latest) if latest else None
+
+        rows.append({
+            **patient,
+            "last_observed_at": latest["recorded_at"] if latest else None,
+            "total_score": score["total_score"] if score else None,
+            "risk_level": score["risk_level"] if score else None,
+            "escalation_required": score["escalation_required"] if score else None,
+            "next_observation_due": score["next_observation_due"] if score else None,
+        })
+
+    return rows

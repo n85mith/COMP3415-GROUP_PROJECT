@@ -6,12 +6,14 @@ import auth
 from fastapi.testclient import TestClient
 
 import observations
+import patients
 from main import app
 
 
 @pytest.fixture(autouse=True)
-def isolated_observations_file(tmp_path, monkeypatch):
+def isolated_data_file(tmp_path, monkeypatch):
     monkeypatch.setattr(observations, "OBSERVATIONS_FILE", str(tmp_path / "observations.json"))
+    monkeypatch.setattr(patients, "PATIENTS_FILE", str(tmp_path / "patients.json"))
 
 
 @pytest.fixture
@@ -33,7 +35,17 @@ def normal_values():
 
 
 @pytest.fixture
-def valid_request(normal_values):
+def patient_data():
+    return {"patient_id": "P-001", "name": "Max Mustermann", "ward": "Ward A", "bed": "1"}
+
+
+@pytest.fixture
+def existing_patient(patient_data):
+    return patients.create_patient(dict(patient_data))
+
+
+@pytest.fixture
+def valid_request(existing_patient, normal_values):
     return {"patient_id": "P-001", "recorded_by": "nurse", **normal_values}
 
 

@@ -5,3 +5,7 @@ __pycache__/
 observations.json
 observations.json.tmp
 observations.corrupt-*.json
+
+patients.json
+patients.json.tmp
+patients.corrupt-*.json
