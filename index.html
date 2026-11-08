@@ -203,6 +203,70 @@
             background: #fee2e2;
             color: #991b1b;
         }
+
+        .risk-none {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+            padding: 0.65rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-head select {
+            width: auto;
+            margin: 0;
+            padding: 0.4rem;
+            font-size: 0.85rem;
+        }
+
+        table.breakdown tr.clickable td {
+            cursor: pointer;
+        }
+
+        table.breakdown tr.clickable:hover td {
+            background: #eff6ff;
+        }
+
+        #ward-list td,
+        #ward-list th {
+            white-space: nowrap;
+        }
+
+        #ward-list td:nth-child(4) {
+            white-space: normal;
+        }
+
+        details.add-patient {
+            margin: 0.5rem 0 1.5rem;
+        }
+
+        details.add-patient summary {
+            cursor: pointer;
+            color: #2563eb;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .muted {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
     </style>
 </head>
 
@@ -242,13 +306,51 @@
         <div class="error" id="obs-error"></div>
 
         <div id="obs-section" style="display: none;">
+            <div class="section-head">
+                <h2 style="font-size: 1.1rem; color: #1e3a8a;">Ward List</h2>
+                <select id="ward-filter" aria-label="Filter by ward">
+                    <option value="">All wards</option>
+                </select>
+            </div>
+            <div id="ward-list"></div>
+
+            <details class="add-patient" id="add-patient">
+                <summary>+ Add patient</summary>
+                <div class="error" id="patient-error"></div>
+                <div class="success" id="patient-success"></div>
+                <form id="patient-form" novalidate>
+                    <div class="obs-grid">
+                        <div>
+                            <label for="pat-patient_id">Patient ID (synthetic)</label>
+                            <input type="text" id="pat-patient_id" placeholder="e.g. P-001" />
+                        </div>
+                        <div>
+                            <label for="pat-name">Name</label>
+                            <input type="text" id="pat-name" placeholder="Synthetic name" />
+                        </div>
+                        <div>
+                            <label for="pat-ward">Ward</label>
+                            <input type="text" id="pat-ward" placeholder="e.g. Ward A" list="ward-options" />
+                            <datalist id="ward-options"></datalist>
+                        </div>
+                        <div>
+                            <label for="pat-bed">Bed</label>
+                            <input type="text" id="pat-bed" placeholder="e.g. 4" />
+                        </div>
+                    </div>
+                    <button type="submit">Add Patient</button>
+                </form>
+            </details>
+
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
 
             <form id="obs-form" novalidate>
                 <div class="obs-grid">
                     <div class="full">
-                        <label for="obs-patient_id">Patient ID (synthetic)</label>
-                        <input type="text" id="obs-patient_id" placeholder="e.g. P-001" />
+                        <label for="obs-patient_id">Patient</label>
+                        <select id="obs-patient_id">
+                            <option value="">Select a patient...</option>
+                        </select>
                     </div>
                     <div>
                         <label for="obs-respiratory_rate">Respiratory rate (breaths/min)</label>
@@ -352,6 +454,7 @@
             document.getElementById('dashboard-view').classList.toggle('wide', isStaff);
             document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
             resetObservationForm();
+            if (isStaff) refreshPatients();
 
             const content = document.getElementById('role-content');
             if (user.role === 'Clinician') {
@@ -367,6 +470,7 @@
             sessionToken = null;
             loginForm.reset();
             resetObservationForm();
+            clearPatientData();
             showView('login');
         }
 
@@ -397,13 +501,13 @@
             clearFieldErrors();
         }
 
-        function clearFieldErrors() {
-            obsForm.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
-            obsForm.querySelectorAll('.field-msg').forEach(el => el.remove());
+        function clearFieldErrors(form = obsForm) {
+            form.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
+            form.querySelectorAll('.field-msg').forEach(el => el.remove());
         }
 
-        function markInvalid(fieldId, message) {
-            const el = document.getElementById(`obs-${fieldId}`);
+        function markInvalid(fieldId, message, prefix = 'obs') {
+            const el = document.getElementById(`${prefix}-${fieldId}`);
             if (!el) return;
             el.classList.add('field-invalid');
             const msg = document.createElement('div');
@@ -465,6 +569,7 @@
                 }
 
                 renderScore(data.score);
+                loadWardList().catch(() => {});
             } catch (error) {
                 obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
                 obsError.style.display = 'block';
@@ -499,6 +604,149 @@
                 </div>`;
             scoreResult.style.display = 'block';
         }
+
+        const patientForm = document.getElementById('patient-form');
+        const patientError = document.getElementById('patient-error');
+        const patientSuccess = document.getElementById('patient-success');
+        const wardFilter = document.getElementById('ward-filter');
+        const wardList = document.getElementById('ward-list');
+        const obsPatientSelect = document.getElementById('obs-patient_id');
+
+        class SessionEndedError extends Error {}
+
+        async function apiFetch(url, options = {}) {
+            const res = await fetch(url, {
+                ...options,
+                headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` }
+            });
+            if (res.status === 401) {
+                clearSession();
+                loginError.textContent = 'Your session has ended. Please log in again.';
+                loginError.style.display = 'block';
+                throw new SessionEndedError();
+            }
+            return res;
+        }
+
+        function clearPatientData() {
+            wardList.innerHTML = '';
+            obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>';
+            wardFilter.innerHTML = '<option value="">All wards</option>';
+            patientForm.reset();
+            clearFieldErrors(patientForm);
+            patientError.style.display = 'none';
+            patientSuccess.style.display = 'none';
+            document.getElementById('add-patient').open = false;
+        }
+
+        async function refreshPatients(selectId) {
+            try {
+                const [patientList, wards] = await Promise.all([
+                    apiFetch('/api/patients').then(r => r.json()),
+                    apiFetch('/api/wards').then(r => r.json()),
+                ]);
+
+                const current = selectId || obsPatientSelect.value;
+                obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>' + patientList.map(p =>
+                    `<option value="${escapeHtml(p.patient_id)}">${escapeHtml(p.patient_id)} - ${escapeHtml(p.name)}` +
+                    ` (${escapeHtml(p.ward)}, bed ${escapeHtml(p.bed)})</option>`).join('');
+                obsPatientSelect.value = current;
+
+                const chosenWard = wardFilter.value;
+                wardFilter.innerHTML = '<option value="">All wards</option>' +
+                    wards.map(w => `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`).join('');
+                wardFilter.value = wards.includes(chosenWard) ? chosenWard : '';
+                document.getElementById('ward-options').innerHTML =
+                    wards.map(w => `<option value="${escapeHtml(w)}"></option>`).join('');
+
+                await loadWardList();
+            } catch (error) {
+                if (!(error instanceof SessionEndedError)) {
+                    wardList.innerHTML = '<p class="muted">Unable to load patients. Please check your connection.</p>';
+                }
+            }
+        }
+
+        async function loadWardList() {
+            const query = wardFilter.value ? `?ward=${encodeURIComponent(wardFilter.value)}` : '';
+            const rows = await apiFetch(`/api/ward-list${query}`).then(r => r.json());
+
+            if (rows.length === 0) {
+                wardList.innerHTML = '<p class="muted">No patients yet. Add one below.</p>';
+                return;
+            }
+
+            const body = rows.map(row => {
+                const risk = row.risk_level
+                    ? `<span class="risk risk-${row.risk_level.replace(/\s+/g, '-')}">${escapeHtml(row.risk_level)}</span>`
+                    : '<span class="risk risk-none">No obs yet</span>';
+                const last = row.last_observed_at
+                    ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                    : '-';
+                return `<tr class="clickable" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
+                    <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
+                    <td>${escapeHtml(row.patient_id)}</td><td>${escapeHtml(row.name)}</td>
+                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td></tr>`;
+            }).join('');
+
+            wardList.innerHTML = `<table class="breakdown">
+                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
+                ${body}</table>`;
+        }
+
+        wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
+
+        wardList.addEventListener('click', (e) => {
+            const row = e.target.closest('tr[data-patient]');
+            if (!row) return;
+            obsPatientSelect.value = row.dataset.patient;
+            obsForm.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        patientForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFieldErrors(patientForm);
+            patientError.style.display = 'none';
+            patientSuccess.style.display = 'none';
+
+            const body = {};
+            for (const id of ['patient_id', 'name', 'ward', 'bed']) {
+                body[id] = document.getElementById(`pat-${id}`).value;
+            }
+
+            try {
+                const res = await apiFetch('/api/patients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (res.status === 403) {
+                    patientError.textContent = 'Your account does not have permission to add patients.';
+                    patientError.style.display = 'block';
+                    return;
+                }
+                if (!res.ok) {
+                    patientError.textContent = res.status === 409
+                        ? data.detail
+                        : 'Patient was not saved. Please fix the highlighted fields.';
+                    patientError.style.display = 'block';
+                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message, 'pat');
+                    return;
+                }
+
+                patientSuccess.textContent = `Patient ${data.patient_id} added to ${data.ward}, bed ${data.bed}.`;
+                patientSuccess.style.display = 'block';
+                patientForm.reset();
+                await refreshPatients(data.patient_id);
+            } catch (error) {
+                if (error instanceof SessionEndedError) return;
+                patientError.textContent = 'Unable to confirm the save. Please check your connection before trying again.';
+                patientError.style.display = 'block';
+            }
+        });
+
     </script>
 </body>
 
