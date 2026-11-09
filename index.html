@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CareSight — Sign In</title>
+    <title>CareSight â€” Sign In</title>
     <style>
         * {
             box-sizing: border-box;
@@ -84,16 +84,6 @@
             display: none;
         }
 
-        .success {
-            background: #dcfce7;
-            color: #166534;
-            padding: 0.65rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            margin-bottom: 1rem;
-            display: none;
-        }
-
         .demo-box {
             margin-top: 1.25rem;
             padding: 0.75rem;
@@ -129,23 +119,6 @@
 
         .logout-btn:hover {
             background: #334155;
-        }
-
-        .link-btn {
-            background: none;
-            border: none;
-            color: #2563eb;
-            font-size: 0.85rem;
-            cursor: pointer;
-            padding: 0;
-            margin-top: 0.75rem;
-            width: auto;
-            font-weight: 500;
-        }
-
-        .link-btn:hover {
-            text-decoration: underline;
-            background: none;
         }
 
         .card.wide {
@@ -231,6 +204,69 @@
             color: #991b1b;
         }
 
+        .risk-none {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+            padding: 0.65rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-head select {
+            width: auto;
+            margin: 0;
+            padding: 0.4rem;
+            font-size: 0.85rem;
+        }
+
+        table.breakdown tr.clickable td {
+            cursor: pointer;
+        }
+
+        table.breakdown tr.clickable:hover td {
+            background: #eff6ff;
+        }
+
+        #ward-list td,
+        #ward-list th {
+            white-space: nowrap;
+        }
+
+        #ward-list td:nth-child(4) {
+            white-space: normal;
+        }
+
+        details.add-patient {
+            margin: 0.5rem 0 1.5rem;
+        }
+
+        details.add-patient summary {
+            cursor: pointer;
+            color: #2563eb;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .muted {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
         .alert {
             margin: 0.75rem 0;
             padding: 0.75rem 1rem;
@@ -241,22 +277,12 @@
             font-size: 0.9rem;
         }
 
-        .esc-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .esc-header button {
+        .section-head button {
             width: auto;
             padding: 0.35rem 0.8rem;
             font-size: 0.8rem;
         }
 
-        .muted {
-            color: #64748b;
-            font-size: 0.85rem;
-        }
     </style>
 </head>
 
@@ -278,40 +304,11 @@
             <button type="submit">Sign In</button>
         </form>
 
-        <div style="text-align: center;">
-            <button class="link-btn" onclick="showView('register')">Don't have an account? Sign up</button>
-        </div>
-
         <div class="demo-box">
             <strong>Demo Clinician Account:</strong><br />
             Username: <code>clinician</code> &nbsp; Password: <code>password123</code><br />
             <strong>Demo Nurse Account:</strong><br />
             Username: <code>nurse</code> &nbsp; Password: <code>password123</code>
-        </div>
-    </div>
-
-    <div class="card" id="register-view" style="display: none;">
-        <h1>Create Account</h1>
-        <p class="sub">Register as a Patient</p>
-
-        <div class="error" id="register-error"></div>
-        <div class="success" id="register-success"></div>
-
-        <form id="register-form">
-            <label for="reg-name">Full Name</label>
-            <input type="text" id="reg-name" placeholder="Enter your full name" required />
-
-            <label for="reg-username">Username</label>
-            <input type="text" id="reg-username" placeholder="Choose a username" required />
-
-            <label for="reg-password">Password</label>
-            <input type="password" id="reg-password" placeholder="Minimum 6 characters" required minlength="6" />
-
-            <button type="submit">Create Account</button>
-        </form>
-
-        <div style="text-align: center;">
-            <button class="link-btn" onclick="showView('login')">Already have an account? Sign in</button>
         </div>
     </div>
 
@@ -322,23 +319,62 @@
 
         <div class="panel" id="role-content"></div>
 
+        <div class="error" id="obs-error"></div>
+
         <div id="esc-section" style="display: none;">
-            <div class="esc-header">
+            <div class="section-head">
                 <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
-                <button type="button" onclick="loadEscalations()">Refresh</button>
+                <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
             </div>
             <div id="esc-list"></div>
         </div>
 
         <div id="obs-section" style="display: none;">
+            <div class="section-head">
+                <h2 style="font-size: 1.1rem; color: #1e3a8a;">Ward List</h2>
+                <select id="ward-filter" aria-label="Filter by ward">
+                    <option value="">All wards</option>
+                </select>
+            </div>
+            <div id="ward-list"></div>
+
+            <details class="add-patient" id="add-patient">
+                <summary>+ Add patient</summary>
+                <div class="error" id="patient-error"></div>
+                <div class="success" id="patient-success"></div>
+                <form id="patient-form" novalidate>
+                    <div class="obs-grid">
+                        <div>
+                            <label for="pat-patient_id">Patient ID (synthetic)</label>
+                            <input type="text" id="pat-patient_id" placeholder="e.g. P-001" />
+                        </div>
+                        <div>
+                            <label for="pat-name">Name</label>
+                            <input type="text" id="pat-name" placeholder="Synthetic name" />
+                        </div>
+                        <div>
+                            <label for="pat-ward">Ward</label>
+                            <input type="text" id="pat-ward" placeholder="e.g. Ward A" list="ward-options" />
+                            <datalist id="ward-options"></datalist>
+                        </div>
+                        <div>
+                            <label for="pat-bed">Bed</label>
+                            <input type="text" id="pat-bed" placeholder="e.g. 4" />
+                        </div>
+                    </div>
+                    <button type="submit">Add Patient</button>
+                </form>
+            </details>
+
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
-            <div class="error" id="obs-error"></div>
 
             <form id="obs-form" novalidate>
                 <div class="obs-grid">
                     <div class="full">
-                        <label for="obs-patient_id">Patient ID (synthetic)</label>
-                        <input type="text" id="obs-patient_id" placeholder="e.g. P-001" />
+                        <label for="obs-patient_id">Patient</label>
+                        <select id="obs-patient_id">
+                            <option value="">Select a patient...</option>
+                        </select>
                     </div>
                     <div>
                         <label for="obs-respiratory_rate">Respiratory rate (breaths/min)</label>
@@ -391,19 +427,13 @@
 
     <script>
         const loginForm = document.getElementById('login-form');
-        const registerForm = document.getElementById('register-form');
         const loginError = document.getElementById('login-error');
-        const registerError = document.getElementById('register-error');
-        const registerSuccess = document.getElementById('register-success');
 
         function showView(view) {
             document.getElementById('login-view').style.display = view === 'login' ? 'block' : 'none';
-            document.getElementById('register-view').style.display = view === 'register' ? 'block' : 'none';
             document.getElementById('dashboard-view').style.display = view === 'dashboard' ? 'block' : 'none';
 
             loginError.style.display = 'none';
-            registerError.style.display = 'none';
-            registerSuccess.style.display = 'none';
         }
 
         loginForm.addEventListener('submit', async (e) => {
@@ -413,57 +443,35 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
 
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
 
-            const data = await res.json();
+                const data = await res.json();
 
-            if (!res.ok) {
-                loginError.textContent = data.detail || 'Login failed';
+                if (!res.ok) {
+                    loginError.textContent = data.detail || 'Login failed';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                showDashboard(data);
+            } catch (error) {
+                loginError.textContent = 'Unable to sign in. Check your connection and try again.';
                 loginError.style.display = 'block';
-                return;
             }
-
-            showDashboard(data);
         });
 
-        registerForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            registerError.style.display = 'none';
-            registerSuccess.style.display = 'none';
-
-            const full_name = document.getElementById('reg-name').value;
-            const username = document.getElementById('reg-username').value;
-            const password = document.getElementById('reg-password').value;
-
-            const res = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, full_name })
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                registerError.textContent = data.detail || 'Registration failed';
-                registerError.style.display = 'block';
-                return;
-            }
-
-            registerSuccess.textContent = `Account created! You can now sign in as "${data.username}".`;
-            registerSuccess.style.display = 'block';
-            registerForm.reset();
-
-            setTimeout(() => showView('login'), 2000);
-        });
-
-        let currentUser = null;
+        let sessionToken = null;
+        let currentRole = null;
 
         function showDashboard(user) {
-            currentUser = user;
+            sessionToken = user.access_token;
+            currentRole = user.role;
+            loginForm.reset();
             showView('dashboard');
             document.getElementById('user-role').textContent = user.role;
             document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
@@ -472,10 +480,11 @@
             document.getElementById('dashboard-view').classList.toggle('wide', isStaff);
             document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
             resetObservationForm();
+            if (isStaff) refreshPatients();
 
             const isClinician = user.role === 'Clinician';
             document.getElementById('esc-section').style.display = isClinician ? 'block' : 'none';
-            if (isClinician) loadEscalations();
+            if (isClinician) loadEscalations().catch(() => {});
 
             const content = document.getElementById('role-content');
             if (user.role === 'Clinician') {
@@ -483,14 +492,33 @@
             } else if (user.role === 'Nurse') {
                 content.innerHTML = '<strong>Nurse View:</strong> Enter a patient\'s seven vital signs to see the NEWS2 score, risk level and when the next observation is due.';
             } else {
-                content.innerHTML = '<strong>Patient View:</strong> Ready to view your health assessments and track your clinical observations.';
+                content.textContent = 'Administrator account. Staff and ward management will be available in a later iteration.';
             }
         }
 
-        function logout() {
-            currentUser = null;
+        function clearSession() {
+            sessionToken = null;
+            currentRole = null;
+            document.getElementById('esc-list').innerHTML = '';
+            document.getElementById('esc-section').style.display = 'none';
             loginForm.reset();
+            resetObservationForm();
+            clearPatientData();
             showView('login');
+        }
+
+        async function logout() {
+            try {
+                const res = await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${sessionToken}` }
+                });
+                if (!res.ok && res.status !== 401) throw new Error('Sign out failed');
+                clearSession();
+            } catch (error) {
+                obsError.textContent = 'Unable to sign out. Check your connection and try again.';
+                obsError.style.display = 'block';
+            }
         }
 
         const obsForm = document.getElementById('obs-form');
@@ -506,13 +534,13 @@
             clearFieldErrors();
         }
 
-        function clearFieldErrors() {
-            obsForm.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
-            obsForm.querySelectorAll('.field-msg').forEach(el => el.remove());
+        function clearFieldErrors(form = obsForm) {
+            form.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
+            form.querySelectorAll('.field-msg').forEach(el => el.remove());
         }
 
-        function markInvalid(fieldId, message) {
-            const el = document.getElementById(`obs-${fieldId}`);
+        function markInvalid(fieldId, message, prefix = 'obs') {
+            const el = document.getElementById(`${prefix}-${fieldId}`);
             if (!el) return;
             el.classList.add('field-invalid');
             const msg = document.createElement('div');
@@ -535,7 +563,6 @@
 
             const body = {
                 patient_id: document.getElementById('obs-patient_id').value,
-                recorded_by: currentUser.username,
             };
             for (const id of OBS_FIELDS) {
                 const raw = document.getElementById(`obs-${id}`).value;
@@ -545,48 +572,43 @@
                 else body[id] = raw;
             }
 
-            const res = await fetch('/api/observations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            const data = await res.json();
+            try {
+                const res = await fetch('/api/observations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${sessionToken}`
+                    },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
 
-            if (!res.ok) {
-                obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
+                if (res.status === 401) {
+                    clearSession();
+                    loginError.textContent = 'Your session has ended. Please sign in again.';
+                    loginError.style.display = 'block';
+                    return;
+                }
+                if (res.status === 403) {
+                    obsError.textContent = 'Your account does not have permission to record observations.';
+                    obsError.style.display = 'block';
+                    return;
+                }
+                if (!res.ok) {
+                    obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
+                    obsError.style.display = 'block';
+                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
+                    return;
+                }
+
+                renderScore(data.score, data.escalation);
+                loadWardList().catch(() => {});
+                if (currentRole === 'Clinician') loadEscalations().catch(() => {});
+            } catch (error) {
+                obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
                 obsError.style.display = 'block';
-                for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
-                return;
             }
-
-            renderScore(data.score, data.escalation);
-            if (currentUser.role === 'Clinician') loadEscalations();
         });
-
-        async function loadEscalations() {
-            const list = document.getElementById('esc-list');
-            const res = await fetch('/api/escalations');
-            if (!res.ok) {
-                list.innerHTML = '<p class="muted">Could not load escalations.</p>';
-                return;
-            }
-            const items = await res.json();
-            if (items.length === 0) {
-                list.innerHTML = '<p class="muted">No open escalations.</p>';
-                return;
-            }
-            const rows = items.map(e => `<tr>
-                <td>${escapeHtml(e.patient_id)}</td>
-                <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
-                <td>${e.total_score}</td>
-                <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
-                <td>${escapeHtml(e.clinical_response)}</td>
-                <td>${escapeHtml(new Date(e.created_at).toLocaleString())}</td>
-                <td>${escapeHtml(e.recorded_by)}</td></tr>`).join('');
-            list.innerHTML = `<table class="breakdown">
-                <tr><th>Patient</th><th>Risk</th><th>Score</th><th>Scored 3</th><th>Required response</th><th>Raised</th><th>By</th></tr>
-                ${rows}</table>`;
-        }
 
         function renderScore(score, escalation) {
             const rows = score.breakdown.map(row => {
@@ -621,6 +643,180 @@
                 </div>`;
             scoreResult.style.display = 'block';
         }
+
+        const patientForm = document.getElementById('patient-form');
+        const patientError = document.getElementById('patient-error');
+        const patientSuccess = document.getElementById('patient-success');
+        const wardFilter = document.getElementById('ward-filter');
+        const wardList = document.getElementById('ward-list');
+        const obsPatientSelect = document.getElementById('obs-patient_id');
+
+        class SessionEndedError extends Error {}
+
+        async function apiFetch(url, options = {}) {
+            const res = await fetch(url, {
+                ...options,
+                headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` }
+            });
+            if (res.status === 401) {
+                clearSession();
+                loginError.textContent = 'Your session has ended. Please log in again.';
+                loginError.style.display = 'block';
+                throw new SessionEndedError();
+            }
+            return res;
+        }
+
+        function clearPatientData() {
+            wardList.innerHTML = '';
+            obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>';
+            wardFilter.innerHTML = '<option value="">All wards</option>';
+            patientForm.reset();
+            clearFieldErrors(patientForm);
+            patientError.style.display = 'none';
+            patientSuccess.style.display = 'none';
+            document.getElementById('add-patient').open = false;
+        }
+
+        async function refreshPatients(selectId) {
+            try {
+                const [patientList, wards] = await Promise.all([
+                    apiFetch('/api/patients').then(r => r.json()),
+                    apiFetch('/api/wards').then(r => r.json()),
+                ]);
+
+                const current = selectId || obsPatientSelect.value;
+                obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>' + patientList.map(p =>
+                    `<option value="${escapeHtml(p.patient_id)}">${escapeHtml(p.patient_id)} - ${escapeHtml(p.name)}` +
+                    ` (${escapeHtml(p.ward)}, bed ${escapeHtml(p.bed)})</option>`).join('');
+                obsPatientSelect.value = current;
+
+                const chosenWard = wardFilter.value;
+                wardFilter.innerHTML = '<option value="">All wards</option>' +
+                    wards.map(w => `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`).join('');
+                wardFilter.value = wards.includes(chosenWard) ? chosenWard : '';
+                document.getElementById('ward-options').innerHTML =
+                    wards.map(w => `<option value="${escapeHtml(w)}"></option>`).join('');
+
+                await loadWardList();
+            } catch (error) {
+                if (!(error instanceof SessionEndedError)) {
+                    wardList.innerHTML = '<p class="muted">Unable to load patients. Please check your connection.</p>';
+                }
+            }
+        }
+
+        async function loadWardList() {
+            const query = wardFilter.value ? `?ward=${encodeURIComponent(wardFilter.value)}` : '';
+            const rows = await apiFetch(`/api/ward-list${query}`).then(r => r.json());
+
+            if (rows.length === 0) {
+                wardList.innerHTML = '<p class="muted">No patients yet. Add one below.</p>';
+                return;
+            }
+
+            const body = rows.map(row => {
+                const risk = row.risk_level
+                    ? `<span class="risk risk-${row.risk_level.replace(/\s+/g, '-')}">${escapeHtml(row.risk_level)}</span>`
+                    : '<span class="risk risk-none">No obs yet</span>';
+                const last = row.last_observed_at
+                    ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                    : '-';
+                return `<tr class="clickable" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
+                    <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
+                    <td>${escapeHtml(row.patient_id)}</td><td>${escapeHtml(row.name)}</td>
+                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td></tr>`;
+            }).join('');
+
+            wardList.innerHTML = `<table class="breakdown">
+                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
+                ${body}</table>`;
+        }
+
+        async function loadEscalations() {
+            const escList = document.getElementById('esc-list');
+            const res = await apiFetch('/api/escalations');
+            if (!res.ok) {
+                escList.innerHTML = '<p class="muted">Unable to load escalations.</p>';
+                return;
+            }
+            const items = await res.json();
+            if (items.length === 0) {
+                escList.innerHTML = '<p class="muted">No open escalations.</p>';
+                return;
+            }
+            const rows = items.map(e => {
+                const where = e.ward ? `${e.ward}, bed ${e.bed}` : '-';
+                const raised = new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+                return `<tr>
+                    <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
+                    <td>${e.total_score}</td>
+                    <td>${escapeHtml(e.patient_id)}${e.patient_name ? ' - ' + escapeHtml(e.patient_name) : ''}</td>
+                    <td>${escapeHtml(where)}</td>
+                    <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
+                    <td>${escapeHtml(e.clinical_response)}</td>
+                    <td>${escapeHtml(raised)}</td>
+                    <td>${escapeHtml(e.recorded_by)}</td></tr>`;
+            }).join('');
+            escList.innerHTML = `<table class="breakdown">
+                <tr><th>Risk</th><th>Score</th><th>Patient</th><th>Location</th><th>Scored 3</th>
+                <th>Required response</th><th>Raised</th><th>By</th></tr>
+                ${rows}</table>`;
+        }
+
+        wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
+
+        wardList.addEventListener('click', (e) => {
+            const row = e.target.closest('tr[data-patient]');
+            if (!row) return;
+            obsPatientSelect.value = row.dataset.patient;
+            obsForm.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        patientForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFieldErrors(patientForm);
+            patientError.style.display = 'none';
+            patientSuccess.style.display = 'none';
+
+            const body = {};
+            for (const id of ['patient_id', 'name', 'ward', 'bed']) {
+                body[id] = document.getElementById(`pat-${id}`).value;
+            }
+
+            try {
+                const res = await apiFetch('/api/patients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (res.status === 403) {
+                    patientError.textContent = 'Your account does not have permission to add patients.';
+                    patientError.style.display = 'block';
+                    return;
+                }
+                if (!res.ok) {
+                    patientError.textContent = res.status === 409
+                        ? data.detail
+                        : 'Patient was not saved. Please fix the highlighted fields.';
+                    patientError.style.display = 'block';
+                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message, 'pat');
+                    return;
+                }
+
+                patientSuccess.textContent = `Patient ${data.patient_id} added to ${data.ward}, bed ${data.bed}.`;
+                patientSuccess.style.display = 'block';
+                patientForm.reset();
+                await refreshPatients(data.patient_id);
+            } catch (error) {
+                if (error instanceof SessionEndedError) return;
+                patientError.textContent = 'Unable to confirm the save. Please check your connection before trying again.';
+                patientError.style.display = 'block';
+            }
+        });
+
     </script>
 </body>
 

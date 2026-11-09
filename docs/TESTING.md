@@ -16,7 +16,7 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 ## Latest execution result
 
 ```
-92 passed
+124 passed
 ```
 
 (Run `pytest -v` to see each case. CI results are on the repository's Actions tab.)
@@ -41,10 +41,13 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 | **US-03** Out-of-range value (RR 200): nothing saved, field identified | `validate_observation_values` | `test_api.py::test_out_of_range_value_saves_nothing_and_names_the_field` |
 | **US-03** Missing parameter: nothing saved | `validate_observation_values` | `test_api.py::test_missing_parameter_saves_nothing` |
 | **US-01** Valid login returns the role; invalid login is a generic error | `POST /api/login` | `test_api.py::test_valid_login_returns_role`, `test_invalid_login_is_generic_401` |
+| **US-01** Missing, invalid, expired or revoked token returns 401; wrong role returns 403; storage unchanged | `auth.require_role` | `test_access.py::test_denied_requests_do_not_change_storage` |
+| **US-01** Recorder comes from session, logout revokes only its token, patient registration removed | `auth.py`, `main.py` | `test_access.py`, `test_api.py::test_self_registration_is_removed` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested
 
-- Role-based access refusal (US-01 criterion 3) - needs sessions, not yet built.
 - Browser UI behaviour - checked manually for this iteration; automated UI tests are a candidate for later.
 - Performance target NFR-03 (95% of submissions scored in under 500 ms) - not measured yet.
+
+US-01 browser verification covered Nurse login, an authenticated observation save, sign-out, Admin login without clinical controls, and Admin sign-out. Observation data was isolated from the regular app storage.

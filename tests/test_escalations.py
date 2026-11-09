@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
 
+import pytest
+
 import escalations
 from scoring import score_observation
 
@@ -118,31 +120,68 @@ def test_corrupt_file_is_backed_up_not_lost(tmp_path, normal_values):
     assert list(tmp_path.glob("escalations.corrupt-*.json"))
 
 
+def auth_headers(client, username):
+    response = client.post("/api/login", json={"username": username, "password": "password123"})
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def test_high_observation_via_api_raises_escalation(client, valid_request):
+    nurse, clinician = auth_headers(client, "nurse"), auth_headers(client, "clinician")
     valid_request.update(respiratory_rate=25, consciousness="V", pulse=135)
-    body = client.post("/api/observations", json=valid_request).json()
+    body = client.post("/api/observations", json=valid_request, headers=nurse).json()
 
     assert body["escalation"]["risk_level"] == "High"
-    listed = client.get("/api/escalations").json()
+    assert body["escalation"]["recorded_by"] == "nurse"
+    listed = client.get("/api/escalations", headers=clinician).json()
     assert [e["id"] for e in listed] == [body["escalation"]["id"]]
 
 
+def test_listed_escalation_includes_patient_details(client, valid_request, patient_data):
+    valid_request["consciousness"] = "C"
+    client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse"))
+
+    listed = client.get("/api/escalations", headers=auth_headers(client, "clinician")).json()
+    assert listed[0]["patient_name"] == patient_data["name"]
+    assert listed[0]["ward"] == patient_data["ward"]
+    assert listed[0]["bed"] == patient_data["bed"]
+
+
 def test_normal_observation_via_api_has_no_escalation(client, valid_request):
-    body = client.post("/api/observations", json=valid_request).json()
+    body = client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse")).json()
     assert body["escalation"] is None
-    assert client.get("/api/escalations").json() == []
+    assert client.get("/api/escalations", headers=auth_headers(client, "clinician")).json() == []
 
 
 def test_rejected_observation_raises_no_escalation(client, valid_request):
     valid_request.update(consciousness="U", respiratory_rate=200)
-    assert client.post("/api/observations", json=valid_request).status_code == 422
-    assert client.get("/api/escalations").json() == []
+    response = client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse"))
+    assert response.status_code == 422
+    assert escalations.load_escalations() == []
+
+
+def test_unknown_patient_raises_no_escalation(client, valid_request):
+    valid_request.update(patient_id="P-404", consciousness="U")
+    response = client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse"))
+    assert response.status_code == 422
+    assert escalations.load_escalations() == []
 
 
 def test_list_can_filter_by_status(client, valid_request):
     valid_request["consciousness"] = "C"
-    client.post("/api/observations", json=valid_request)
+    client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse"))
+    clinician = auth_headers(client, "clinician")
 
-    assert len(client.get("/api/escalations?status=Open").json()) == 1
-    assert client.get("/api/escalations?status=Acknowledged").json() == []
-    assert len(client.get("/api/escalations?status=").json()) == 1
+    assert len(client.get("/api/escalations?status=Open", headers=clinician).json()) == 1
+    assert client.get("/api/escalations?status=Acknowledged", headers=clinician).json() == []
+    assert len(client.get("/api/escalations?status=", headers=clinician).json()) == 1
+
+
+@pytest.mark.parametrize("username, expected", [("nurse", 403), ("admin", 403), (None, 401)])
+def test_only_clinicians_can_list_escalations(client, valid_request, username, expected):
+    valid_request["consciousness"] = "U"
+    client.post("/api/observations", json=valid_request, headers=auth_headers(client, "nurse"))
+    headers = auth_headers(client, username) if username else {}
+
+    response = client.get("/api/escalations", headers=headers)
+    assert response.status_code == expected
+    assert "patient_id" not in response.text
