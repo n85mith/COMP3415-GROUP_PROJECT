@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+import escalations
 import observations
 from scoring import score_observation
 
@@ -123,11 +124,18 @@ def record_observation(data: ObservationRequest):
         observation[field["id"]] = values[field["id"]]
 
     observations.save_observation(observation)
+    score = score_observation(observation)
+    escalation = escalations.create_escalation_if_required(observation, score)
 
-    return {"observation": observation, "score": score_observation(observation)}
+    return {"observation": observation, "score": score, "escalation": escalation}
 
 
 @app.get("/api/patients/{patient_id}/observations")
 def patient_history(patient_id: str):
     history = observations.get_observations_for_patient(patient_id)
     return [{"observation": obs, "score": score_observation(obs)} for obs in history]
+
+
+@app.get("/api/escalations")
+def list_escalations(status: Optional[str] = escalations.OPEN):
+    return escalations.list_escalations(status or None)

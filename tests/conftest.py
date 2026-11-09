@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import escalations
 import observations
 from main import app
 
@@ -8,6 +9,7 @@ from main import app
 @pytest.fixture(autouse=True)
 def isolated_observations_file(tmp_path, monkeypatch):
     monkeypatch.setattr(observations, "OBSERVATIONS_FILE", str(tmp_path / "observations.json"))
+    monkeypatch.setattr(escalations, "ESCALATIONS_FILE", str(tmp_path / "escalations.json"))
 
 
 @pytest.fixture

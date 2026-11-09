@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CareSight â€” Sign In</title>
+    <title>CareSight — Sign In</title>
     <style>
         * {
             box-sizing: border-box;
@@ -230,6 +230,33 @@
             background: #fee2e2;
             color: #991b1b;
         }
+
+        .alert {
+            margin: 0.75rem 0;
+            padding: 0.75rem 1rem;
+            background: #fee2e2;
+            border-left: 4px solid #b91c1c;
+            border-radius: 4px;
+            color: #7f1d1d;
+            font-size: 0.9rem;
+        }
+
+        .esc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .esc-header button {
+            width: auto;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .muted {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 
@@ -294,6 +321,14 @@
         <p class="sub">Signed in to CareSight</p>
 
         <div class="panel" id="role-content"></div>
+
+        <div id="esc-section" style="display: none;">
+            <div class="esc-header">
+                <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
+                <button type="button" onclick="loadEscalations()">Refresh</button>
+            </div>
+            <div id="esc-list"></div>
+        </div>
 
         <div id="obs-section" style="display: none;">
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
@@ -438,6 +473,10 @@
             document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
             resetObservationForm();
 
+            const isClinician = user.role === 'Clinician';
+            document.getElementById('esc-section').style.display = isClinician ? 'block' : 'none';
+            if (isClinician) loadEscalations();
+
             const content = document.getElementById('role-content');
             if (user.role === 'Clinician') {
                 content.innerHTML = '<strong>Clinician View:</strong> Record observations and review the NEWS2 score breakdown, risk level and escalation status below.';
@@ -520,10 +559,36 @@
                 return;
             }
 
-            renderScore(data.score);
+            renderScore(data.score, data.escalation);
+            if (currentUser.role === 'Clinician') loadEscalations();
         });
 
-        function renderScore(score) {
+        async function loadEscalations() {
+            const list = document.getElementById('esc-list');
+            const res = await fetch('/api/escalations');
+            if (!res.ok) {
+                list.innerHTML = '<p class="muted">Could not load escalations.</p>';
+                return;
+            }
+            const items = await res.json();
+            if (items.length === 0) {
+                list.innerHTML = '<p class="muted">No open escalations.</p>';
+                return;
+            }
+            const rows = items.map(e => `<tr>
+                <td>${escapeHtml(e.patient_id)}</td>
+                <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
+                <td>${e.total_score}</td>
+                <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
+                <td>${escapeHtml(e.clinical_response)}</td>
+                <td>${escapeHtml(new Date(e.created_at).toLocaleString())}</td>
+                <td>${escapeHtml(e.recorded_by)}</td></tr>`).join('');
+            list.innerHTML = `<table class="breakdown">
+                <tr><th>Patient</th><th>Risk</th><th>Score</th><th>Scored 3</th><th>Required response</th><th>Raised</th><th>By</th></tr>
+                ${rows}</table>`;
+        }
+
+        function renderScore(score, escalation) {
             const rows = score.breakdown.map(row => {
                 let raw = row.raw_value;
                 if (typeof raw === 'boolean') raw = raw ? 'Yes' : 'No (air)';
@@ -534,8 +599,13 @@
             const due = new Date(score.next_observation_due).toLocaleString();
             const dueText = score.hours_until_next_observation === 0 ? 'Continuous monitoring' : due;
 
+            const alertHtml = escalation ? `<div class="alert"><strong>Escalation raised</strong> for patient
+                ${escapeHtml(escalation.patient_id)} (${escapeHtml(escalation.risk_level)} risk, score ${escalation.total_score}).
+                The clinical team has been alerted.</div>` : '';
+
             scoreResult.innerHTML = `
                 <h2 style="font-size: 1.1rem; color: #1e3a8a;">Observation saved</h2>
+                ${alertHtml}
                 <span class="risk risk-${score.risk_level.replace(/\s+/g, '-')}">${escapeHtml(score.risk_level)} risk</span>
                 <strong style="margin-left: 0.5rem;">Total score: ${score.total_score}</strong>
                 <table class="breakdown">
