@@ -3,6 +3,7 @@ from copy import deepcopy
 import pytest
 
 import auth
+import escalations
 from fastapi.testclient import TestClient
 
 import observations
@@ -14,6 +15,7 @@ from main import app
 def isolated_data_file(tmp_path, monkeypatch):
     monkeypatch.setattr(observations, "OBSERVATIONS_FILE", str(tmp_path / "observations.json"))
     monkeypatch.setattr(patients, "PATIENTS_FILE", str(tmp_path / "patients.json"))
+    monkeypatch.setattr(escalations, "ESCALATIONS_FILE", str(tmp_path / "escalations.json"))
 
 
 @pytest.fixture

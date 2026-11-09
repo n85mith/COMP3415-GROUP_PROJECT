@@ -9,3 +9,7 @@ observations.corrupt-*.json
 patients.json
 patients.json.tmp
 patients.corrupt-*.json
+
+escalations.json
+escalations.json.tmp
+escalations.corrupt-*.json

@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+import escalations
 import observations
 import patients
 from auth import (
@@ -99,8 +100,10 @@ def record_observation(
         observation[field["id"]] = values[field["id"]]
 
     observations.save_observation(observation)
+    score = score_observation(observation)
+    escalation = escalations.create_escalation_if_required(observation, score)
 
-    return {"observation": observation, "score": score_observation(observation)}
+    return {"observation": observation, "score": score, "escalation": escalation}
 
 
 @app.get("/api/patients/{patient_id}/observations")
@@ -163,4 +166,21 @@ def ward_list(
             "next_observation_due": score["next_observation_due"] if score else None,
         })
 
+    return rows
+
+
+@app.get("/api/escalations")
+def list_escalations(
+    status: Optional[str] = escalations.OPEN,
+    user: dict = Depends(require_role("Clinician")),
+):
+    rows = []
+    for escalation in escalations.list_escalations(status or None):
+        patient = patients.get_patient(escalation["patient_id"]) or {}
+        rows.append({
+            **escalation,
+            "patient_name": patient.get("name"),
+            "ward": patient.get("ward"),
+            "bed": patient.get("bed"),
+        })
     return rows

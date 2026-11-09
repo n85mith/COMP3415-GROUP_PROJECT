@@ -20,7 +20,7 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 
 ---
 
-## What works in this iteration (P2)
+## What works in this iteration (P3)
 
 | User story | Feature | Where |
 | :--- | :--- | :--- |
@@ -30,8 +30,9 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 | US-04 | One NEWS2 scorer per parameter behind a common interface, with thresholds in one file | `scoring/scorers.py`, `scoring/bands.py` |
 | US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
 | US-06 | Score breakdown with raw values, sub-scores and total; parameters scoring 3 are highlighted | `index.html`, `scoring/news2.py` |
+| US-07 | Observations with a total of 5+ or any single 3 create an Open escalation; clinicians see open escalations by risk level, then oldest first | `escalations.py`, `main.py`, `index.html` |
 
-Not yet built: escalations (US-07/08), overdue flags (US-09), trends (US-10), audit log (US-11), admin pages (US-12), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
+Not yet built: acknowledging escalations (US-08), overdue flags (US-09), trends (US-10), audit log (US-11), admin pages (US-12), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
@@ -57,11 +58,11 @@ Open http://127.0.0.1:8000 and sign in with a demo account. (If Windows reports 
 | Clinician | `clinician` | `password123` |
 | Admin | `admin` | `password123` |
 
-Nurse and Clinician accounts can record and read observations. Admin accounts are reserved for administration and cannot access clinical endpoints. Patient self-registration has been removed. Add a patient under **+ Add patient** (for example `P-001`, `Ward A`, bed `1`), choose them in the **Patient** list, or click their row in the ward list, then enter the seven vital signs, and press **Save & Score**. Observations are only allowed for patients that exist. Interactive API documentation is at http://127.0.0.1:8000/docs.
+Nurse and Clinician accounts can record and read observations. Admin accounts are reserved for administration and cannot access clinical endpoints. Patient self-registration has been removed. Add a patient under **+ Add patient** (for example `P-001`, `Ward A`, bed `1`), choose them in the **Patient** list, or click their row in the ward list, then enter the seven vital signs, and press **Save & Score**. Observations are only allowed for patients that exist. If the observation needs escalation (for example consciousness `V`), an alert is shown and the escalation appears under **Open Escalations** when signed in as `clinician`. Interactive API documentation is at http://127.0.0.1:8000/docs.
 
 **Command-line entry** (no web server needed): `python observations.py`
 
-Observations are saved to `observations.json`, patients are saved to `patients.json` next to the code (both ignored by git). They are replaced by a database in a later iteration.
+Observations are saved to `observations.json`, patients to `patients.json` and escalations to `escalations.json` next to the code (all ignored by git). They are replaced by a database in a later iteration.
 
 ## Running the tests
 
@@ -76,10 +77,11 @@ The test plan and the mapping from user stories to tests are in [`docs/TESTING.m
 
 ```
 auth.py             Shared session management and require_role dependency
-main.py             FastAPI app: login, logout, patient, ward list, observation + history endpoints
+main.py             FastAPI app: login, logout, patient, ward list, observation, history and escalation endpoints
 index.html          Single-page UI: sign in, ward list, add patient, observation entry, score breakdown
 observations.py     Observation fields, validation and JSON storage (also a CLI)
 patients.py         Patient records (ID, name, ward, bed) and JSON storage
+escalations.py      Creates and lists escalations from the scoring result, JSON storage
 scoring/
   bands.py          NEWS2 thresholds (the one place they are defined)
   scorers.py        One scorer class per parameter

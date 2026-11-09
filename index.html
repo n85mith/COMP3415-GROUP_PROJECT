@@ -267,6 +267,22 @@
             font-size: 0.85rem;
         }
 
+        .alert {
+            margin: 0.75rem 0;
+            padding: 0.75rem 1rem;
+            background: #fee2e2;
+            border-left: 4px solid #b91c1c;
+            border-radius: 4px;
+            color: #7f1d1d;
+            font-size: 0.9rem;
+        }
+
+        .section-head button {
+            width: auto;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
     </style>
 </head>
 
@@ -304,6 +320,14 @@
         <div class="panel" id="role-content"></div>
 
         <div class="error" id="obs-error"></div>
+
+        <div id="esc-section" style="display: none;">
+            <div class="section-head">
+                <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
+                <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+            </div>
+            <div id="esc-list"></div>
+        </div>
 
         <div id="obs-section" style="display: none;">
             <div class="section-head">
@@ -442,9 +466,11 @@
         });
 
         let sessionToken = null;
+        let currentRole = null;
 
         function showDashboard(user) {
             sessionToken = user.access_token;
+            currentRole = user.role;
             loginForm.reset();
             showView('dashboard');
             document.getElementById('user-role').textContent = user.role;
@@ -455,6 +481,10 @@
             document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
             resetObservationForm();
             if (isStaff) refreshPatients();
+
+            const isClinician = user.role === 'Clinician';
+            document.getElementById('esc-section').style.display = isClinician ? 'block' : 'none';
+            if (isClinician) loadEscalations().catch(() => {});
 
             const content = document.getElementById('role-content');
             if (user.role === 'Clinician') {
@@ -468,6 +498,9 @@
 
         function clearSession() {
             sessionToken = null;
+            currentRole = null;
+            document.getElementById('esc-list').innerHTML = '';
+            document.getElementById('esc-section').style.display = 'none';
             loginForm.reset();
             resetObservationForm();
             clearPatientData();
@@ -568,15 +601,16 @@
                     return;
                 }
 
-                renderScore(data.score);
+                renderScore(data.score, data.escalation);
                 loadWardList().catch(() => {});
+                if (currentRole === 'Clinician') loadEscalations().catch(() => {});
             } catch (error) {
                 obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
                 obsError.style.display = 'block';
             }
         });
 
-        function renderScore(score) {
+        function renderScore(score, escalation) {
             const rows = score.breakdown.map(row => {
                 let raw = row.raw_value;
                 if (typeof raw === 'boolean') raw = raw ? 'Yes' : 'No (air)';
@@ -587,8 +621,13 @@
             const due = new Date(score.next_observation_due).toLocaleString();
             const dueText = score.hours_until_next_observation === 0 ? 'Continuous monitoring' : due;
 
+            const alertHtml = escalation ? `<div class="alert"><strong>Escalation raised</strong> for patient
+                ${escapeHtml(escalation.patient_id)} (${escapeHtml(escalation.risk_level)} risk, score ${escalation.total_score}).
+                The clinical team has been alerted.</div>` : '';
+
             scoreResult.innerHTML = `
                 <h2 style="font-size: 1.1rem; color: #1e3a8a;">Observation saved</h2>
+                ${alertHtml}
                 <span class="risk risk-${score.risk_level.replace(/\s+/g, '-')}">${escapeHtml(score.risk_level)} risk</span>
                 <strong style="margin-left: 0.5rem;">Total score: ${score.total_score}</strong>
                 <table class="breakdown">
@@ -692,6 +731,37 @@
             wardList.innerHTML = `<table class="breakdown">
                 <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
                 ${body}</table>`;
+        }
+
+        async function loadEscalations() {
+            const escList = document.getElementById('esc-list');
+            const res = await apiFetch('/api/escalations');
+            if (!res.ok) {
+                escList.innerHTML = '<p class="muted">Unable to load escalations.</p>';
+                return;
+            }
+            const items = await res.json();
+            if (items.length === 0) {
+                escList.innerHTML = '<p class="muted">No open escalations.</p>';
+                return;
+            }
+            const rows = items.map(e => {
+                const where = e.ward ? `${e.ward}, bed ${e.bed}` : '-';
+                const raised = new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+                return `<tr>
+                    <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
+                    <td>${e.total_score}</td>
+                    <td>${escapeHtml(e.patient_id)}${e.patient_name ? ' - ' + escapeHtml(e.patient_name) : ''}</td>
+                    <td>${escapeHtml(where)}</td>
+                    <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
+                    <td>${escapeHtml(e.clinical_response)}</td>
+                    <td>${escapeHtml(raised)}</td>
+                    <td>${escapeHtml(e.recorded_by)}</td></tr>`;
+            }).join('');
+            escList.innerHTML = `<table class="breakdown">
+                <tr><th>Risk</th><th>Score</th><th>Patient</th><th>Location</th><th>Scored 3</th>
+                <th>Required response</th><th>Raised</th><th>By</th></tr>
+                ${rows}</table>`;
         }
 
         wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
