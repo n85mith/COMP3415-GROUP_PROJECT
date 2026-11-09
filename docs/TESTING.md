@@ -1,4 +1,4 @@
-# Testing Plan and Initial Tests (P2.3)
+# Testing Plan and Tests (updated for P3)
 
 ## Approach
 
@@ -8,6 +8,9 @@
 | Unit | Risk level, observation frequency and escalation decision for each total-score range, including "any single 3" | `pytest`, direct calls to `evaluate_result` and `score_observation` | `tests/test_news2.py` |
 | Unit | Observation validation and safe storage (missing, out-of-range and wrong-type values; corrupt file is backed up, never overwritten) | `pytest` with a temporary observations file per test | `tests/test_observations.py` |
 | Integration | Login, recording an observation through the HTTP API, validation failures, scored history | FastAPI `TestClient` against the real app | `tests/test_api.py` |
+| Integration | Sessions and role checks: missing, invalid, expired and revoked tokens, wrong roles, storage unchanged on refusal | FastAPI `TestClient` | `tests/test_auth.py`, `tests/test_access.py` |
+| Unit + integration | Patient records: required fields, duplicate IDs, occupied beds, ward filter, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
+| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing | `pytest`, `TestClient` | `tests/test_escalations.py` |
 
 The scoring tests are the most thorough because NFR-01 requires the scoring engine to pass 100% of the boundary cases. Each test uses an isolated temporary storage file so tests never touch real data and can run in any order.
 
@@ -16,7 +19,7 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 ## Latest execution result
 
 ```
-124 passed
+164 passed (flake8: no problems)
 ```
 
 (Run `pytest -v` to see each case. CI results are on the repository's Actions tab.)
@@ -43,6 +46,13 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 | **US-01** Valid login returns the role; invalid login is a generic error | `POST /api/login` | `test_api.py::test_valid_login_returns_role`, `test_invalid_login_is_generic_401` |
 | **US-01** Missing, invalid, expired or revoked token returns 401; wrong role returns 403; storage unchanged | `auth.require_role` | `test_access.py::test_denied_requests_do_not_change_storage` |
 | **US-01** Recorder comes from session, logout revokes only its token, patient registration removed | `auth.py`, `main.py` | `test_access.py`, `test_api.py::test_self_registration_is_removed` |
+| **US-02** New patient with all fields appears in the ward list with a unique ID | `patients.create_patient`, `GET /api/ward-list` | `test_patients.py::test_staff_can_create_and_list_patients`, `test_duplicate_patient_id_is_rejected`, `test_ward_list_shows_latest_score_and_risk` |
+| **US-02** Missing required field is rejected and named | `patients.validate_patient` | `test_patients.py::test_missing_fields_are_reported`, `test_icomplete_patient_saves_nothing` |
+| **US-02** Ward list can be limited to one ward | `patients.list_patients(ward)` | `test_patients.py::test_list_can_be_filtered_by_ward` |
+| **US-07** Total 5+ or any single 3 creates an Open escalation with patient, score, risk level and required response | `escalations.create_escalation_if_required` | `test_escalations.py::test_medium_score_creates_open_escalation_with_details`, `test_single_parameter_three_creates_low_medium_escalation`, `test_high_observation_via_api_raises_escalation` |
+| **US-07** Below all thresholds: no escalation | `escalations.create_escalation_if_required` | `test_escalations.py::test_low_score_creates_no_escalation`, `test_low_score_above_zero_creates_no_escalation`, `test_normal_observation_via_api_has_no_escalation` |
+| **US-07** Open escalations listed by risk level, then oldest first | `escalations.list_escalations` | `test_escalations.py::test_list_puts_highest_risk_first`, `test_same_risk_level_is_listed_oldest_first`, `test_higher_score_does_not_jump_ahead_within_a_risk_level` |
+| **US-07 / FR-09** Escalations are routed to clinicians only | `GET /api/escalations` with `require_role("Clinician")` | `test_escalations.py::test_only_clinicians_can_list_escalations` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested
