@@ -283,6 +283,26 @@
             font-size: 0.8rem;
         }
 
+        .badge-overdue {
+            background: #f10505;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        .row-overdue {
+            background: #b91c1c;
+        }
+
+        tr.esc-High td:first-child { border-left: 5px solid #e62828;}
+        tr.esc-High td { background: #fef2f2;}
+        tr.esc-Medium td:first-child { border-left: 5px solid #fa8015;}
+        tr.esc-Medium td { background: #fff7ed;}
+        tr.esc-Low-medium td:first-child { border-left: 5px solid #f1a41f;}
+        tr.esc-Low-medium td { background: #fefce8;}
+        
     </style>
 </head>
 
@@ -323,8 +343,15 @@
 
         <div id="esc-section" style="display: none;">
             <div class="section-head">
-                <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
-                <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+                <h2 style="font-size: 1.1rem; color: #991b1b;">Escalation Box</h2>
+                <div style="display: flex; gap: 0.5rem;align-items: center;">
+                    <select id="esc-status-filter" aria-label="Filter escalations by status">
+                        <option value="Open" selected>Open</option>
+                        <option value="Acknowledged">Acknowledged</option>
+                        <option value="">All</option>
+                    </select>
+                    <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+                </div>
             </div>
             <div id="esc-list"></div>
         </div>
@@ -720,35 +747,60 @@
                     ? `<span class="risk risk-${row.risk_level.replace(/\s+/g, '-')}">${escapeHtml(row.risk_level)}</span>`
                     : '<span class="risk risk-none">No obs yet</span>';
                 const last = row.last_observed_at
+                
                     ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
                     : '-';
-                return `<tr class="clickable" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
+
+                let nextDue ='-';
+                let isOverdue = false;
+
+                if (row.next_observation_due){
+                    if (row.total_score>= 7){
+                        nextDue = '<span class="badge">Continuous</span>'
+                    } else{
+                        const dueDate = new Date(row.next_observation_due);
+                        const dueTime = dueDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                        if (dueDate < new Date()){
+                            isOverdue = true;
+                            nextDue = `<span class="badge-overdue">OVERDUE</span> (${escapeHtml(dueTime)})`;
+                        } else {
+                            nextDue = escapeHtml(dueTime)
+                        }
+                    }
+                        
+                }
+                    
+                return `<tr class="clickable ${isOverdue ? 'row-overdue' : ''}" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
                     <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
                     <td>${escapeHtml(row.patient_id)}</td><td>${escapeHtml(row.name)}</td>
-                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td></tr>`;
+                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td>
+                    <td>${nextDue}</td></tr>`;
             }).join('');
 
             wardList.innerHTML = `<table class="breakdown">
-                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
+                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th><th>Next obs</th></tr>
                 ${body}</table>`;
         }
 
         async function loadEscalations() {
             const escList = document.getElementById('esc-list');
-            const res = await apiFetch('/api/escalations');
+            const status = document.getElementById('esc-status-filter').value;
+            const query = status ? `?status=${encodeURIComponent(status)}` : '?status=';
+            const res = await apiFetch(`/api/escalations${query}`);
             if (!res.ok) {
                 escList.innerHTML = '<p class="muted">Unable to load escalations.</p>';
                 return;
             }
             const items = await res.json();
             if (items.length === 0) {
-                escList.innerHTML = '<p class="muted">No open escalations.</p>';
+                escList.innerHTML = '<p class="muted">No escalations found.</p>';
                 return;
             }
             const rows = items.map(e => {
                 const where = e.ward ? `${e.ward}, bed ${e.bed}` : '-';
                 const raised = new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                return `<tr>
+                const riskClass = `esc-${e.risk_level.replace(/\s+/g, '-')}`;
+                return `<tr class="${riskClass}">
                     <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
                     <td>${e.total_score}</td>
                     <td>${escapeHtml(e.patient_id)}${e.patient_name ? ' - ' + escapeHtml(e.patient_name) : ''}</td>
@@ -756,15 +808,17 @@
                     <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
                     <td>${escapeHtml(e.clinical_response)}</td>
                     <td>${escapeHtml(raised)}</td>
-                    <td>${escapeHtml(e.recorded_by)}</td></tr>`;
+                    <td>${escapeHtml(e.recorded_by)}</td>
+                    <td><span class="badge">${escapeHtml(e.status)}</span></td></tr>`;
             }).join('');
             escList.innerHTML = `<table class="breakdown">
                 <tr><th>Risk</th><th>Score</th><th>Patient</th><th>Location</th><th>Scored 3</th>
-                <th>Required response</th><th>Raised</th><th>By</th></tr>
+                <th>Required response</th><th>Raised</th><th>By</th><th>Status</th></tr>
                 ${rows}</table>`;
         }
 
         wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
+        document.getElementById('esc-status-filter').addEventListener('change', () => loadEscalations().catch(() => {}));
 
         wardList.addEventListener('click', (e) => {
             const row = e.target.closest('tr[data-patient]');
