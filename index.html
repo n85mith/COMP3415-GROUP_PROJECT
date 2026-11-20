@@ -28,6 +28,8 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             width: 100%;
             max-width: 400px;
+            min-width: 0;
+            overflow-x: hidden;
         }
 
         h1 {
@@ -283,6 +285,52 @@
             font-size: 0.8rem;
         }
 
+        .badge-overdue {
+            background: #f10505;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        .row-overdue {
+            background: #b91c1c;
+        }
+
+        #esc-list {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+        }
+
+        #esc-list table.breakdown {
+            width: max-content;
+            min-width: 100%;
+            margin: 0;
+        }
+
+        #esc-list th,
+        #esc-list td {
+            white-space: nowrap;
+        }
+
+        #esc-list td:nth-child(6) {
+            white-space: normal;
+            min-width: 180px;
+            max-width: 240px;
+        }
+
+        tr.esc-High td:first-child { border-left: 5px solid #e62828;}
+        tr.esc-High td { background: #fef2f2;}
+        tr.esc-Medium td:first-child { border-left: 5px solid #fa8015;}
+        tr.esc-Medium td { background: #fff7ed;}
+        tr.esc-Low-medium td:first-child { border-left: 5px solid #f1a41f;}
+        tr.esc-Low-medium td { background: #fefce8;}
+        
     </style>
 </head>
 
@@ -323,10 +371,28 @@
 
         <div id="esc-section" style="display: none;">
             <div class="section-head">
-                <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
-                <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+                <h2 style="font-size: 1.1rem; color: #991b1b;">Escalation Box</h2>
+                <div style="display: flex; gap: 0.5rem;align-items: center;">
+                    <select id="esc-status-filter" aria-label="Filter escalations by status">
+                        <option value="Open" selected>Open</option>
+                        <option value="Acknowledged">Acknowledged</option>
+                        <option value="">All</option>
+                    </select>
+                    <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+                </div>
             </div>
             <div id="esc-list"></div>
+            <div id="ack-panel" class="panel" style="display: none;">
+                <h3 style="margin-top: 0; font-size: 1rem; color: #1e3a8a;">Respond to Escalation</h3>
+                <p id="ack-target-info" class="muted"></p>
+                <label for ="ack-note">Clinical action / response note</label>
+                <textarea id="ack-note" rows="3" style="width: 100%; padding: 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 0.75rem;" placeholder="Describe clinical review or action taken..." required></textarea>
+                <div class="error" id ="ack-error"></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" onclick="submitAcknowledge()">Confirm &amp; Acknowledge</button>
+                    <button type="button" class="logout-btn" onclick="closeAckPanel()">Cancel</button>
+                </div>
+            </div>
         </div>
 
         <div id="obs-section" style="display: none;">
@@ -365,6 +431,14 @@
                     <button type="submit">Add Patient</button>
                 </form>
             </details>
+
+            <div id="trend-panel" class="panel" style="display: none;">
+                <div class="section-head">
+                    <h2 style="font-size: 1.1rem; color: #1e3a8a; margin: 0;">NEWS2 Score Trend - <span id="trend-patient-label"></span></h2>
+                    <button type="button" class="logout-btn" onclick="document.getElementById('trend-panel').style.display='none'">Close</button>
+                </div>
+                <div id="trend-chart" style="margin-top: 0.75rem;"></div>
+            </div>
 
             <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
 
@@ -505,6 +579,7 @@
             resetObservationForm();
             clearPatientData();
             showView('login');
+            document.getElementById('trend-panel').style.display = 'none';
         }
 
         async function logout() {
@@ -603,6 +678,7 @@
 
                 renderScore(data.score, data.escalation);
                 loadWardList().catch(() => {});
+                if (body.patient_id) loadScoreTrend(body.patient_id).catch(() => {});
                 if (currentRole === 'Clinician') loadEscalations().catch(() => {});
             } catch (error) {
                 obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
@@ -720,35 +796,64 @@
                     ? `<span class="risk risk-${row.risk_level.replace(/\s+/g, '-')}">${escapeHtml(row.risk_level)}</span>`
                     : '<span class="risk risk-none">No obs yet</span>';
                 const last = row.last_observed_at
+                
                     ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
                     : '-';
-                return `<tr class="clickable" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
+
+                let nextDue ='-';
+                let isOverdue = false;
+
+                if (row.next_observation_due){
+                    if (row.total_score>= 7){
+                        nextDue = '<span class="badge">Continuous</span>'
+                    } else{
+                        const dueDate = new Date(row.next_observation_due);
+                        const dueTime = dueDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                        if (dueDate < new Date()){
+                            isOverdue = true;
+                            nextDue = `<span class="badge-overdue">OVERDUE</span> (${escapeHtml(dueTime)})`;
+                        } else {
+                            nextDue = escapeHtml(dueTime)
+                        }
+                    }
+                        
+                }
+                    
+                return `<tr class="clickable ${isOverdue ? 'row-overdue' : ''}" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
                     <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
                     <td>${escapeHtml(row.patient_id)}</td><td>${escapeHtml(row.name)}</td>
-                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td></tr>`;
+                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td>
+                    <td>${nextDue}</td></tr>`;
             }).join('');
 
             wardList.innerHTML = `<table class="breakdown">
-                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
+                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th><th>Next obs</th></tr>
                 ${body}</table>`;
         }
 
         async function loadEscalations() {
+        
             const escList = document.getElementById('esc-list');
-            const res = await apiFetch('/api/escalations');
+            const status = document.getElementById('esc-status-filter').value;
+            const query = status ? `?status=${encodeURIComponent(status)}` : '?status=';
+            const res = await apiFetch(`/api/escalations${query}`);
             if (!res.ok) {
                 escList.innerHTML = '<p class="muted">Unable to load escalations.</p>';
                 return;
             }
             const items = await res.json();
             if (items.length === 0) {
-                escList.innerHTML = '<p class="muted">No open escalations.</p>';
+                escList.innerHTML = '<p class="muted">No escalations found.</p>';
                 return;
             }
             const rows = items.map(e => {
                 const where = e.ward ? `${e.ward}, bed ${e.bed}` : '-';
                 const raised = new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                return `<tr>
+                const riskClass = `esc-${e.risk_level.replace(/\s+/g, '-')}`;
+                const actionCell = e.status === 'Open'
+                    ? `<button type="button" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="openAckPanel('${escapeHtml(e.id)}', '${escapeHtml(e.patient_id)}')">Respond</button>`
+                    : `<span class="muted">${escapeHtml(e.acknowledged_by  || '')}${e.response_note ? ': ' + escapeHtml(e.response_note) : ''}</span>`
+                return `<tr class="${riskClass}">
                     <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
                     <td>${e.total_score}</td>
                     <td>${escapeHtml(e.patient_id)}${e.patient_name ? ' - ' + escapeHtml(e.patient_name) : ''}</td>
@@ -756,20 +861,125 @@
                     <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
                     <td>${escapeHtml(e.clinical_response)}</td>
                     <td>${escapeHtml(raised)}</td>
-                    <td>${escapeHtml(e.recorded_by)}</td></tr>`;
+                    <td>${escapeHtml(e.recorded_by)}</td>
+                    <td><span class="badge">${escapeHtml(e.status)}</span></td>
+                    <td>${actionCell}</td></tr>`;
             }).join('');
             escList.innerHTML = `<table class="breakdown">
                 <tr><th>Risk</th><th>Score</th><th>Patient</th><th>Location</th><th>Scored 3</th>
-                <th>Required response</th><th>Raised</th><th>By</th></tr>
+                <th>Required response</th><th>Raised</th><th>By</th><th>Status</th><th>Action / Details</th></tr>
                 ${rows}</table>`;
         }
+        let currentAckID = null;
 
+        function openAckPanel(escId, patientId) {
+            currentAckID = escId;
+            document.getElementById('ack-target-info').textContent = `Acknowledging escalation ${escId} for patient ${patientId}`;
+            document.getElementById('ack-note').value = '';
+            const err = document.getElementById('ack-error');
+            err.style.display = 'none';
+            const panel = document.getElementById('ack-panel');
+            panel.style.display = 'block';
+            panel.scrollIntoView({ behavior: 'smooth'});
+        }
+
+        function closeAckPanel(){
+            currentAckID = null;
+            document.getElementById('ack-panel').style.display = 'none';
+        }
+
+        async function submitAcknowledge() {
+            const err = document.getElementById('ack-error');
+            err.style.display = 'none';
+            const note = document.getElementById('ack-note').value.trim();
+
+            if (!note) {
+                err.textContent = 'Please enter clinical response note before confirming.';
+                err.style.display = 'block';
+                return;
+            }
+
+            try {
+                const res = await apiFetch(`/api/escalations/${encodeURIComponent(currentAckID)}/acknowledge`,{
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ response_note: note })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    err.textContent = data.detail || 'Unable to acknowledge escalation.';
+                    err.style.display = 'block';
+                    return;
+                }
+                closeAckPanel();
+                await loadEscalations();
+            }catch (error) {
+                if (error instanceof SessionEndedError) return;
+                err.textContent = 'Network error while acknowledging escalation.';
+                err.style.display = 'block';
+            }
+        }
+
+        async function loadScoreTrend(patientId) {
+            const panel = document.getElementById('trend-panel');
+            const chart = document.getElementById('trend-chart');
+            document.getElementById('trend-patient-label').textContent =patientId;
+            panel.style.display = 'block';
+
+            const res = await apiFetch(`/api/patients/${encodeURIComponent(patientId)}/observations`);
+            if(!res.ok){
+                chart.innerHTML = '<p class="muted">Unable to load observation history.</p>';
+                return;
+            }
+            const history = await res.json();
+            if (history.length === 0){
+                chart.innerHTML = '<p class="muted">No observation recorded for this patient.</p>';
+                return;
+            }
+            const sorted = [...history].sort((a,b) =>
+            a.observation.recorded_at.localeCompare(b.observation.recorded_at)
+        );
+
+            const w = 560, h = 160, pad = 28
+            const maxScore = Math.max(10, ...sorted.map(item => item.score.total_score));
+            const riskColors = { Low: '#16a34a', 'Low-medium': '#ca8a04', Medium: '#ea580c', High: '#dc2626'};
+
+            const points = sorted.map((item, i) => {
+                const x = sorted.length === 1
+                    ? w / 2
+                    : pad + (i / (sorted.length - 1)) * (w - 2 * pad);
+                const y = h - pad - (item.score.total_score / maxScore) * (h - 2 * pad);
+                const time = new Date(item.observation.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit' });
+                return { x, y, total: item.score.total_score, risk: item.score.risk_level, time };
+        });
+            
+            const polyline = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+            const dots = points.map(p => {
+                const color = riskColors[p.risk] || '#2563eb';
+                return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${color}" stroke="white" stroke-width="1.5">
+                            <title>${escapeHtml(p.time)} - Score: ${p.total} (${escapeHtml(p.risk)})</title>
+                        </circle>
+                        <text x="${p.x.toFixed(1)}" y="${(p.y - 9).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${p.total}</text>
+                        <text x="${p.x.toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(p.time)}</text>`;
+            }).join('');
+
+            chart.innerHTML = `
+            <svg viewBox="0 0 ${w} ${h}" style="width:100%; height: auto; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cbd5e1" />
+                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cbd5e1" />
+                ${points.length > 1 ? `<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="${polyline}" />`: ''}
+                ${dots}
+            </svg>
+            <p class="muted" style="margin: 0.4rem 0 0;">Showing ${points.length} observation(s).Click any patient row above to inspect.</p>`;
+        }
         wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
+        document.getElementById('esc-status-filter').addEventListener('change', () => loadEscalations().catch(() => {}));
 
         wardList.addEventListener('click', (e) => {
             const row = e.target.closest('tr[data-patient]');
             if (!row) return;
             obsPatientSelect.value = row.dataset.patient;
+            loadScoreTrend(row.dataset.patient).catch(() => {});
             obsForm.scrollIntoView({ behavior: 'smooth' });
         });
 
