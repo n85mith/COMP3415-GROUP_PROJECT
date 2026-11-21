@@ -13,6 +13,7 @@
 
         body {
             margin: 0;
+            padding: clamp(0.75rem, 3vw, 2rem);
             background: #f1f5f9;
             display: flex;
             justify-content: center;
@@ -23,7 +24,7 @@
 
         .card {
             background: white;
-            padding: 2rem;
+            padding: clamp(1rem, 4vw, 2rem);
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             width: 100%;
@@ -53,7 +54,7 @@
             width: 100%;
             padding: 0.65rem;
             margin-bottom: 1rem;
-            border: 1px solid #cbd5e1;
+            border: 1px solid #64748b;
             border-radius: 6px;
             font-size: 0.95rem;
         }
@@ -122,12 +123,12 @@
         }
 
         .card.wide {
-            max-width: 640px;
+            max-width: 72rem;
         }
 
         .obs-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0 1rem;
         }
 
@@ -139,7 +140,7 @@
             width: 100%;
             padding: 0.65rem;
             margin-bottom: 1rem;
-            border: 1px solid #cbd5e1;
+            border: 1px solid #64748b;
             border-radius: 6px;
             font-size: 0.95rem;
             background: white;
@@ -206,7 +207,7 @@
 
         .risk-none {
             background: #f1f5f9;
-            color: #64748b;
+            color: #475569;
         }
 
         .success {
@@ -221,6 +222,7 @@
 
         .section-head {
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
             gap: 1rem;
@@ -231,14 +233,6 @@
             margin: 0;
             padding: 0.4rem;
             font-size: 0.85rem;
-        }
-
-        table.breakdown tr.clickable td {
-            cursor: pointer;
-        }
-
-        table.breakdown tr.clickable:hover td {
-            background: #eff6ff;
         }
 
         #ward-list td,
@@ -263,7 +257,7 @@
         }
 
         .muted {
-            color: #64748b;
+            color: #475569;
             font-size: 0.85rem;
         }
 
@@ -283,147 +277,201 @@
             font-size: 0.8rem;
         }
 
+        :focus-visible {
+            outline: 3px solid #1d4ed8;
+            outline-offset: 3px;
+        }
+
+        .dashboard-header,
+        .workspace-nav,
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .dashboard-header { justify-content: space-between; }
+        .workspace-nav { margin: 1rem 0; }
+        .workspace-nav button, .dashboard-header button, .actions button { width: auto; }
+
+        .workspace-nav button, .secondary {
+            background: #eff6ff;
+            color: #1e3a8a;
+        }
+
+        .workspace-nav button:hover, .secondary:hover { background: #dbeafe; }
+        .workspace-nav button[aria-current="page"] { background: #1e3a8a; color: white; }
+
+        button:disabled { cursor: wait; opacity: 0.7; }
+        button[hidden] { display: none; }
+        form { max-width: 42rem; }
+        #ward-list, #esc-list { overflow-x: auto; }
+        #ward-list .actions { flex-wrap: nowrap; }
+        #ward-list .actions button { padding: 0.5rem 0.65rem; font-size: 0.85rem; }
+
+        @media (max-width: 38rem) {
+            .obs-grid { grid-template-columns: minmax(0, 1fr); }
+            input, select { font-size: 1rem; }
+            .section-head { gap: 0.5rem; }
+        }
+
     </style>
 </head>
 
 <body>
 
-    <div class="card" id="login-view">
+    <main class="card" id="login-view">
         <h1>CareSight</h1>
         <p class="sub">Early Warning Score & Escalation Platform</p>
 
-        <div class="error" id="login-error"></div>
+        <div class="error" id="login-error" role="alert"></div>
 
         <form id="login-form">
             <label for="username">Username</label>
-            <input type="text" id="username" placeholder="Enter username" required />
+            <input type="text" id="username" autocomplete="username" autocapitalize="none" required />
 
             <label for="password">Password</label>
-            <input type="password" id="password" placeholder="Enter password" required />
+            <input type="password" id="password" autocomplete="current-password" required />
 
             <button type="submit">Sign In</button>
         </form>
 
         <div class="demo-box">
-            <strong>Demo Clinician Account:</strong><br />
-            Username: <code>clinician</code> &nbsp; Password: <code>password123</code><br />
-            <strong>Demo Nurse Account:</strong><br />
-            Username: <code>nurse</code> &nbsp; Password: <code>password123</code>
+            <strong>Local demo accounts</strong><br />
+            Nurse <code>nurse</code> · Charge nurse <code>clinician</code> · Admin <code>admin</code><br />
+            Demo password <code>password123</code>
         </div>
-    </div>
+    </main>
 
-    <div class="card" id="dashboard-view" style="display: none;">
-        <span class="badge" id="user-role"></span>
-        <h1 id="welcome-name" style="margin-top: 0.5rem;"></h1>
-        <p class="sub">Signed in to CareSight</p>
-
-        <div class="panel" id="role-content"></div>
-
-        <div class="error" id="obs-error"></div>
+    <main class="card wide" id="dashboard-view" style="display: none;">
+        <header class="dashboard-header">
+            <div>
+                <span class="badge" id="user-role"></span>
+                <h1 id="welcome-name" tabindex="-1"></h1>
+            </div>
+            <button class="logout-btn" id="logout-button" type="button">Sign Out</button>
+        </header>
+        <nav class="workspace-nav" id="workspace-nav" aria-label="Workspace"></nav>
+        <div class="error" id="session-error" role="alert"></div>
+        <section id="admin-section" hidden aria-labelledby="admin-heading">
+            <h2 id="admin-heading" tabindex="-1">Administration</h2>
+            <p>Staff and ward management will be available when US-12 is connected.</p>
+        </section>
 
         <div id="esc-section" style="display: none;">
             <div class="section-head">
-                <h2 style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
+                <h2 id="escalations-heading" tabindex="-1" style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
                 <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
             </div>
             <div id="esc-list"></div>
         </div>
 
         <div id="obs-section" style="display: none;">
-            <div class="section-head">
-                <h2 style="font-size: 1.1rem; color: #1e3a8a;">Ward List</h2>
-                <select id="ward-filter" aria-label="Filter by ward">
-                    <option value="">All wards</option>
-                </select>
-            </div>
-            <div id="ward-list"></div>
-
-            <details class="add-patient" id="add-patient">
-                <summary>+ Add patient</summary>
-                <div class="error" id="patient-error"></div>
-                <div class="success" id="patient-success"></div>
-                <form id="patient-form" novalidate>
-                    <div class="obs-grid">
-                        <div>
-                            <label for="pat-patient_id">Patient ID (synthetic)</label>
-                            <input type="text" id="pat-patient_id" placeholder="e.g. P-001" />
-                        </div>
-                        <div>
-                            <label for="pat-name">Name</label>
-                            <input type="text" id="pat-name" placeholder="Synthetic name" />
-                        </div>
-                        <div>
-                            <label for="pat-ward">Ward</label>
-                            <input type="text" id="pat-ward" placeholder="e.g. Ward A" list="ward-options" />
-                            <datalist id="ward-options"></datalist>
-                        </div>
-                        <div>
-                            <label for="pat-bed">Bed</label>
-                            <input type="text" id="pat-bed" placeholder="e.g. 4" />
-                        </div>
-                    </div>
-                    <button type="submit">Add Patient</button>
-                </form>
-            </details>
-
-            <h2 style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
-
-            <form id="obs-form" novalidate>
-                <div class="obs-grid">
-                    <div class="full">
-                        <label for="obs-patient_id">Patient</label>
-                        <select id="obs-patient_id">
-                            <option value="">Select a patient...</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="obs-respiratory_rate">Respiratory rate (breaths/min)</label>
-                        <input type="number" id="obs-respiratory_rate" placeholder="1 - 60" />
-                    </div>
-                    <div>
-                        <label for="obs-spo2">SpO2 (%)</label>
-                        <input type="number" id="obs-spo2" placeholder="50 - 100" />
-                    </div>
-                    <div>
-                        <label for="obs-supplemental_oxygen">Supplemental oxygen?</label>
-                        <select id="obs-supplemental_oxygen">
-                            <option value="">Select...</option>
-                            <option value="false">No (room air)</option>
-                            <option value="true">Yes</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="obs-systolic_bp">Systolic BP (mmHg)</label>
-                        <input type="number" id="obs-systolic_bp" placeholder="40 - 300" />
-                    </div>
-                    <div>
-                        <label for="obs-pulse">Pulse (beats/min)</label>
-                        <input type="number" id="obs-pulse" placeholder="20 - 250" />
-                    </div>
-                    <div>
-                        <label for="obs-consciousness">Consciousness</label>
-                        <select id="obs-consciousness">
-                            <option value="">Select...</option>
-                            <option value="A">A - Alert</option>
-                            <option value="C">C - New confusion</option>
-                            <option value="V">V - Responds to voice</option>
-                            <option value="P">P - Responds to pain</option>
-                            <option value="U">U - Unresponsive</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="obs-temperature">Temperature (&deg;C)</label>
-                        <input type="number" step="0.1" id="obs-temperature" placeholder="30.0 - 43.0" />
-                    </div>
+            <section id="patients-panel" aria-labelledby="patients-heading">
+                <div class="section-head">
+                    <h2 id="patients-heading" tabindex="-1" style="font-size: 1.1rem; color: #1e3a8a;">Ward List</h2>
+                    <select id="ward-filter" aria-label="Filter by ward">
+                        <option value="">All wards</option>
+                    </select>
                 </div>
-                <button type="submit">Save &amp; Score</button>
-            </form>
+                <div id="ward-list" role="region" aria-label="Patient list" tabindex="0"></div>
+                <p id="ward-status" class="muted" role="status"></p>
+                <button id="retry-patients" class="secondary" type="button" hidden>Retry patient list</button>
 
-            <div id="score-result" style="display: none;"></div>
+                <details class="add-patient" id="add-patient">
+                    <summary id="patient-summary">Add patient</summary>
+                    <div class="error" id="patient-error" role="alert"></div>
+                    <div class="success" id="patient-success" role="status"></div>
+                    <form id="patient-form" novalidate>
+                        <div class="obs-grid">
+                            <div>
+                                <label for="pat-patient_id">Patient ID (synthetic)</label>
+                                <input type="text" id="pat-patient_id" required placeholder="e.g. P-001" />
+                            </div>
+                            <div>
+                                <label for="pat-name">Name</label>
+                                <input type="text" id="pat-name" required placeholder="Synthetic name" />
+                            </div>
+                            <div>
+                                <label for="pat-ward">Ward</label>
+                                <input type="text" id="pat-ward" required placeholder="e.g. Ward A" list="ward-options" />
+                                <datalist id="ward-options"></datalist>
+                            </div>
+                            <div>
+                                <label for="pat-bed">Bed</label>
+                                <input type="text" id="pat-bed" required placeholder="e.g. 4" />
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <button id="patient-submit" type="submit">Add Patient</button>
+                            <button id="patient-cancel" class="secondary" type="button" hidden>Cancel edit</button>
+                        </div>
+                    </form>
+                </details>
+            </section>
+
+            <section id="observations-panel" hidden aria-labelledby="observations-heading">
+                <h2 id="observations-heading" tabindex="-1" style="font-size: 1.1rem; color: #1e3a8a;">Record Observation</h2>
+                <p class="muted">Select a patient and enter all seven observations.</p>
+                <div class="error" id="obs-error" role="alert"></div>
+
+                <form id="obs-form" novalidate>
+                    <div class="obs-grid">
+                        <div class="full">
+                            <label for="obs-patient_id">Patient</label>
+                            <select id="obs-patient_id" required>
+                                <option value="">Select a patient...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="obs-respiratory_rate">Respiratory rate (breaths/min)</label>
+                            <input type="number" id="obs-respiratory_rate" required min="1" max="60" placeholder="1 - 60" />
+                        </div>
+                        <div>
+                            <label for="obs-spo2">SpO2 (%)</label>
+                            <input type="number" id="obs-spo2" required min="50" max="100" placeholder="50 - 100" />
+                        </div>
+                        <div>
+                            <label for="obs-supplemental_oxygen">Supplemental oxygen?</label>
+                            <select id="obs-supplemental_oxygen" required>
+                                <option value="">Select...</option>
+                                <option value="false">No (room air)</option>
+                                <option value="true">Yes</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="obs-systolic_bp">Systolic BP (mmHg)</label>
+                            <input type="number" id="obs-systolic_bp" required min="40" max="300" placeholder="40 - 300" />
+                        </div>
+                        <div>
+                            <label for="obs-pulse">Pulse (beats/min)</label>
+                            <input type="number" id="obs-pulse" required min="20" max="250" placeholder="20 - 250" />
+                        </div>
+                        <div>
+                            <label for="obs-consciousness">Consciousness</label>
+                            <select id="obs-consciousness" required>
+                                <option value="">Select...</option>
+                                <option value="A">A - Alert</option>
+                                <option value="C">C - New confusion</option>
+                                <option value="V">V - Responds to voice</option>
+                                <option value="P">P - Responds to pain</option>
+                                <option value="U">U - Unresponsive</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="obs-temperature">Temperature (&deg;C)</label>
+                            <input type="number" step="any" id="obs-temperature" required min="30" max="43" placeholder="30.0 - 43.0" />
+                        </div>
+                    </div>
+                    <button type="submit">Save &amp; Score</button>
+                </form>
+
+                <div id="score-result" tabindex="-1" aria-label="Observation result" style="display: none;"></div>
+            </section>
         </div>
 
-        <button class="logout-btn" style="margin-top: 1rem;" onclick="logout()">Sign Out</button>
-    </div>
+    </main>
 
     <script>
         const loginForm = document.getElementById('login-form');
@@ -436,90 +484,160 @@
             loginError.style.display = 'none';
         }
 
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            loginError.style.display = 'none';
+        const workspaceNav = document.getElementById('workspace-nav');
+        const logoutButton = document.getElementById('logout-button');
+        const sessionError = document.getElementById('session-error');
+        const usernameInput = document.getElementById('username');
+        const panels = {
+            patients: ['Ward List', 'patients-panel', 'patients-heading'],
+            observations: ['Record Observation', 'observations-panel', 'observations-heading'],
+            escalations: ['Escalations', 'esc-section', 'escalations-heading'],
+            admin: ['Administration', 'admin-section', 'admin-heading']
+        };
+        let sessionToken = null;
+        let currentRole = null;
+        let sessionTimer;
 
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
+        function isChargeNurse(role) {
+            return role === 'Clinician' || role === 'Charge Nurse';
+        }
+
+        function showMessage(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        function showPanel(key, focus = true) {
+            for (const [name, [, panelId]] of Object.entries(panels)) {
+                const panel = document.getElementById(panelId);
+                if (name === 'escalations') {
+                    panel.style.display = key === name ? 'block' : 'none';
+                } else {
+                    panel.hidden = key !== name;
+                }
+            }
+            for (const button of workspaceNav.querySelectorAll('button')) {
+                if (button.dataset.panel === key) button.setAttribute('aria-current', 'page');
+                else button.removeAttribute('aria-current');
+            }
+            if (focus) document.getElementById(panels[key][2]).focus();
+            if (key === 'escalations') loadEscalations().catch(() => {});
+        }
+
+        workspaceNav.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-panel]');
+            if (button) showPanel(button.dataset.panel);
+        });
+
+        loginForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = loginForm.querySelector('button[type="submit"]');
+            if (button.disabled) return;
+            button.disabled = true;
+            loginError.style.display = 'none';
 
             try {
                 const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({
+                        username: usernameInput.value.trim(),
+                        password: document.getElementById('password').value
+                    })
                 });
-
                 const data = await res.json();
 
                 if (!res.ok) {
-                    loginError.textContent = data.detail || 'Login failed';
-                    loginError.style.display = 'block';
+                    showMessage(loginError, typeof data.detail === 'string' ? data.detail : 'Unable to sign in.');
+                    document.getElementById('password').focus();
                     return;
                 }
-
                 showDashboard(data);
-            } catch (error) {
-                loginError.textContent = 'Unable to sign in. Check your connection and try again.';
-                loginError.style.display = 'block';
+            } catch {
+                showMessage(loginError, 'Unable to sign in. Check your connection and try again.');
+            } finally {
+                button.disabled = false;
             }
         });
-
-        let sessionToken = null;
-        let currentRole = null;
 
         function showDashboard(user) {
             sessionToken = user.access_token;
             currentRole = user.role;
-            loginForm.reset();
-            showView('dashboard');
-            document.getElementById('user-role').textContent = user.role;
-            document.getElementById('welcome-name').textContent = `Welcome, ${user.name}`;
+            const chargeNurse = isChargeNurse(user.role);
+            const isStaff = user.role === 'Nurse' || chargeNurse;
+            const available = isStaff ? ['patients', 'observations'] : [];
+            if (chargeNurse) available.push('escalations');
+            if (user.role === 'Admin') available.push('admin');
 
-            const isStaff = user.role === 'Nurse' || user.role === 'Clinician';
-            document.getElementById('dashboard-view').classList.toggle('wide', isStaff);
+            if (!available.length) {
+                clearSession('Your account does not have a CareSight workspace.');
+                return;
+            }
+
+            loginForm.reset();
+            sessionError.style.display = 'none';
+            showView('dashboard');
+            document.getElementById('user-role').textContent = chargeNurse ? 'Charge nurse' : user.role;
+            const welcome = document.getElementById('welcome-name');
+            welcome.textContent = `Welcome, ${user.name}`;
+
             document.getElementById('obs-section').style.display = isStaff ? 'block' : 'none';
-            resetObservationForm();
+            workspaceNav.replaceChildren(...available.map(key => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = panels[key][0];
+                button.dataset.panel = key;
+                button.setAttribute('aria-controls', panels[key][1]);
+                return button;
+            }));
+            showPanel(available[0], false);
+            welcome.focus();
             if (isStaff) refreshPatients();
 
-            const isClinician = user.role === 'Clinician';
-            document.getElementById('esc-section').style.display = isClinician ? 'block' : 'none';
-            if (isClinician) loadEscalations().catch(() => {});
-
-            const content = document.getElementById('role-content');
-            if (user.role === 'Clinician') {
-                content.innerHTML = '<strong>Clinician View:</strong> Record observations and review the NEWS2 score breakdown, risk level and escalation status below.';
-            } else if (user.role === 'Nurse') {
-                content.innerHTML = '<strong>Nurse View:</strong> Enter a patient\'s seven vital signs to see the NEWS2 score, risk level and when the next observation is due.';
-            } else {
-                content.textContent = 'Administrator account. Staff and ward management will be available in a later iteration.';
+            const token = sessionToken;
+            if (Number.isFinite(user.expires_in) && user.expires_in > 0) {
+                sessionTimer = setTimeout(() => {
+                    if (token === sessionToken) endSession();
+                }, user.expires_in * 1000);
             }
         }
 
-        function clearSession() {
+        function endSession() {
+            clearSession('Your session has ended. Please sign in again.');
+        }
+
+        function clearSession(message) {
+            clearTimeout(sessionTimer);
             sessionToken = null;
             currentRole = null;
-            document.getElementById('esc-list').innerHTML = '';
+            workspaceNav.replaceChildren();
+            document.getElementById('esc-list').replaceChildren();
             document.getElementById('esc-section').style.display = 'none';
             loginForm.reset();
             resetObservationForm();
             clearPatientData();
             showView('login');
+            if (message) showMessage(loginError, message);
+            usernameInput.focus();
         }
 
-        async function logout() {
+        logoutButton.addEventListener('click', async () => {
+            logoutButton.disabled = true;
+            sessionError.style.display = 'none';
+            const token = sessionToken;
             try {
-                const res = await fetch('/api/logout', {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${sessionToken}` }
-                });
-                if (!res.ok && res.status !== 401) throw new Error('Sign out failed');
+                const res = await apiFetch('/api/logout', { method: 'POST' });
+                if (!res.ok) throw new Error('Sign out failed');
                 clearSession();
             } catch (error) {
-                obsError.textContent = 'Unable to sign out. Check your connection and try again.';
-                obsError.style.display = 'block';
+                if (token === sessionToken && !(error instanceof SessionEndedError)) {
+                    showMessage(sessionError, 'Unable to sign out. Check your connection and try again.');
+                    logoutButton.focus();
+                }
+            } finally {
+                logoutButton.disabled = false;
             }
-        }
+        });
 
         const obsForm = document.getElementById('obs-form');
         const obsError = document.getElementById('obs-error');
@@ -531,82 +649,113 @@
             obsForm.reset();
             obsError.style.display = 'none';
             scoreResult.style.display = 'none';
+            scoreResult.replaceChildren();
             clearFieldErrors();
         }
 
+        function clearFieldError(field) {
+            field.classList.remove('field-invalid');
+            field.removeAttribute('aria-invalid');
+            field.removeAttribute('aria-describedby');
+            document.getElementById(`${field.id}-error`)?.remove();
+        }
+
         function clearFieldErrors(form = obsForm) {
-            form.querySelectorAll('.field-invalid').forEach(el => el.classList.remove('field-invalid'));
-            form.querySelectorAll('.field-msg').forEach(el => el.remove());
+            form.querySelectorAll('.field-invalid').forEach(clearFieldError);
         }
 
         function markInvalid(fieldId, message, prefix = 'obs') {
-            const el = document.getElementById(`${prefix}-${fieldId}`);
-            if (!el) return;
-            el.classList.add('field-invalid');
-            const msg = document.createElement('div');
-            msg.className = 'field-msg';
-            msg.textContent = message;
-            el.after(msg);
+            const field = document.getElementById(`${prefix}-${fieldId}`);
+            if (!field) return;
+            clearFieldError(field);
+            const error = document.createElement('p');
+            error.id = `${field.id}-error`;
+            error.className = 'field-msg';
+            error.textContent = message;
+            field.classList.add('field-invalid');
+            field.setAttribute('aria-invalid', 'true');
+            field.setAttribute('aria-describedby', error.id);
+            field.after(error);
+        }
+
+        function showFieldErrors(form, prefix, errors) {
+            for (const [field, message] of Object.entries(errors)) markInvalid(field, message, prefix);
+            form.querySelector('[aria-invalid="true"]')?.focus();
         }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = String(text);
-            return div.innerHTML;
+            return div.innerHTML.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
         }
 
-        obsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        function observationErrors() {
+            const errors = {};
+            for (const id of ['patient_id', ...OBS_FIELDS]) {
+                const field = document.getElementById(`obs-${id}`);
+                const validity = field.validity;
+                if (validity.badInput) errors[id] = 'Enter a number.';
+                else if (validity.valueMissing) errors[id] = 'This field is required.';
+                else if (validity.stepMismatch) errors[id] = 'Enter a whole number.';
+                else if (validity.rangeUnderflow || validity.rangeOverflow) {
+                    errors[id] = `Enter a value between ${field.min} and ${field.max}.`;
+                }
+            }
+            return errors;
+        }
+
+        obsForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = obsForm.querySelector('button[type="submit"]');
+            if (button.disabled) return;
             clearFieldErrors();
             obsError.style.display = 'none';
             scoreResult.style.display = 'none';
 
-            const body = {
-                patient_id: document.getElementById('obs-patient_id').value,
-            };
+            const errors = observationErrors();
+            if (Object.keys(errors).length) {
+                showMessage(obsError, 'Check the highlighted fields before saving.');
+                showFieldErrors(obsForm, 'obs', errors);
+                return;
+            }
+
+            const body = { patient_id: obsPatientSelect.value };
             for (const id of OBS_FIELDS) {
                 const raw = document.getElementById(`obs-${id}`).value;
-                if (raw === '') continue;
                 if (OBS_NUMBER_FIELDS.includes(id)) body[id] = Number(raw);
                 else if (id === 'supplemental_oxygen') body[id] = raw === 'true';
                 else body[id] = raw;
             }
 
+            button.disabled = true;
             try {
-                const res = await fetch('/api/observations', {
+                const res = await apiFetch('/api/observations', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${sessionToken}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
                 const data = await res.json();
 
-                if (res.status === 401) {
-                    clearSession();
-                    loginError.textContent = 'Your session has ended. Please sign in again.';
-                    loginError.style.display = 'block';
-                    return;
-                }
                 if (res.status === 403) {
-                    obsError.textContent = 'Your account does not have permission to record observations.';
-                    obsError.style.display = 'block';
+                    showMessage(obsError, 'Your account does not have permission to record observations.');
                     return;
                 }
                 if (!res.ok) {
-                    obsError.textContent = 'Nothing was saved. Please fix the highlighted fields.';
-                    obsError.style.display = 'block';
-                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message);
+                    showMessage(obsError, data.errors ? 'Check the highlighted fields before saving.' : 'Unable to save the observation.');
+                    showFieldErrors(obsForm, 'obs', data.errors || {});
                     return;
                 }
 
                 renderScore(data.score, data.escalation);
-                loadWardList().catch(() => {});
-                if (currentRole === 'Clinician') loadEscalations().catch(() => {});
+                if (!document.getElementById('observations-panel').hidden) scoreResult.focus();
+                refreshWardList();
+                if (isChargeNurse(currentRole)) loadEscalations().catch(() => {});
             } catch (error) {
-                obsError.textContent = 'Unable to confirm the save. Check your connection before trying again.';
-                obsError.style.display = 'block';
+                if (!(error instanceof SessionEndedError)) {
+                    showMessage(obsError, 'Unable to confirm the save. Check your connection before trying again.');
+                }
+            } finally {
+                button.disabled = false;
             }
         });
 
@@ -651,86 +800,161 @@
         const wardList = document.getElementById('ward-list');
         const obsPatientSelect = document.getElementById('obs-patient_id');
 
+        const wardStatus = document.getElementById('ward-status');
+        const retryPatients = document.getElementById('retry-patients');
+        const patientEditor = document.getElementById('add-patient');
+        const patientSummary = document.getElementById('patient-summary');
+        const patientSubmit = document.getElementById('patient-submit');
+        const patientCancel = document.getElementById('patient-cancel');
+        const patientFields = ['patient_id', 'name', 'ward', 'bed'];
+        let editingPatient = null;
+        let editTrigger = null;
+        let wardRequest = 0;
+
         class SessionEndedError extends Error {}
 
         async function apiFetch(url, options = {}) {
+            const token = sessionToken;
             const res = await fetch(url, {
                 ...options,
-                headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` }
+                headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` }
             });
+            if (token !== sessionToken) throw new SessionEndedError();
             if (res.status === 401) {
-                clearSession();
-                loginError.textContent = 'Your session has ended. Please log in again.';
-                loginError.style.display = 'block';
+                endSession();
                 throw new SessionEndedError();
             }
             return res;
         }
 
-        function clearPatientData() {
-            wardList.innerHTML = '';
-            obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>';
-            wardFilter.innerHTML = '<option value="">All wards</option>';
+        async function fetchList(url) {
+            const response = await apiFetch(url);
+            if (!response.ok) throw new Error('Unable to load list');
+            return response.json();
+        }
+
+        function setPatientEditor(patient = null, trigger = null) {
+            editingPatient = patient;
+            editTrigger = trigger;
             patientForm.reset();
             clearFieldErrors(patientForm);
             patientError.style.display = 'none';
             patientSuccess.style.display = 'none';
-            document.getElementById('add-patient').open = false;
+            patientSummary.textContent = patient ? `Edit ${patient.patient_id}` : 'Add patient';
+            patientSubmit.textContent = patient ? 'Save Changes' : 'Add Patient';
+            patientCancel.hidden = !patient;
+            document.getElementById('pat-patient_id').readOnly = Boolean(patient);
+            if (patient) {
+                for (const field of patientFields) {
+                    document.getElementById(`pat-${field}`).value = patient[field];
+                }
+                patientEditor.open = true;
+                document.getElementById('pat-name').focus();
+            }
+        }
+
+        function clearPatientData() {
+            wardRequest++;
+            wardList.replaceChildren();
+            wardStatus.textContent = '';
+            retryPatients.hidden = true;
+            obsPatientSelect.replaceChildren(new Option('Select a patient...', ''));
+            wardFilter.replaceChildren(new Option('All wards', ''));
+            document.getElementById('ward-options').replaceChildren();
+            setPatientEditor();
+            patientEditor.open = false;
+        }
+
+        function showPatientLoadError() {
+            wardStatus.textContent = 'Unable to load the patient list.';
+            retryPatients.hidden = false;
         }
 
         async function refreshPatients(selectId) {
+            const token = sessionToken;
+            wardStatus.textContent = 'Loading patients…';
+            retryPatients.hidden = true;
             try {
                 const [patientList, wards] = await Promise.all([
-                    apiFetch('/api/patients').then(r => r.json()),
-                    apiFetch('/api/wards').then(r => r.json()),
+                    fetchList('/api/patients'),
+                    fetchList('/api/wards')
                 ]);
+                if (token !== sessionToken) return;
 
                 const current = selectId || obsPatientSelect.value;
-                obsPatientSelect.innerHTML = '<option value="">Select a patient...</option>' + patientList.map(p =>
-                    `<option value="${escapeHtml(p.patient_id)}">${escapeHtml(p.patient_id)} - ${escapeHtml(p.name)}` +
-                    ` (${escapeHtml(p.ward)}, bed ${escapeHtml(p.bed)})</option>`).join('');
-                obsPatientSelect.value = current;
+                obsPatientSelect.replaceChildren(new Option('Select a patient...', ''), ...patientList.map(patient =>
+                    new Option(`${patient.patient_id} - ${patient.name} (${patient.ward}, bed ${patient.bed})`, patient.patient_id)));
+                obsPatientSelect.value = patientList.some(patient => patient.patient_id === current) ? current : '';
 
                 const chosenWard = wardFilter.value;
-                wardFilter.innerHTML = '<option value="">All wards</option>' +
-                    wards.map(w => `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`).join('');
+                wardFilter.replaceChildren(new Option('All wards', ''), ...wards.map(ward => new Option(ward, ward)));
                 wardFilter.value = wards.includes(chosenWard) ? chosenWard : '';
-                document.getElementById('ward-options').innerHTML =
-                    wards.map(w => `<option value="${escapeHtml(w)}"></option>`).join('');
+                document.getElementById('ward-options').replaceChildren(...wards.map(ward => new Option(ward, ward)));
 
-                await loadWardList();
+                await refreshWardList();
             } catch (error) {
-                if (!(error instanceof SessionEndedError)) {
-                    wardList.innerHTML = '<p class="muted">Unable to load patients. Please check your connection.</p>';
-                }
+                if (token === sessionToken && !(error instanceof SessionEndedError)) showPatientLoadError();
             }
         }
 
-        async function loadWardList() {
+        async function refreshWardList() {
+            const request = ++wardRequest;
             const query = wardFilter.value ? `?ward=${encodeURIComponent(wardFilter.value)}` : '';
-            const rows = await apiFetch(`/api/ward-list${query}`).then(r => r.json());
+            wardStatus.textContent = 'Loading patients…';
+            wardList.replaceChildren();
+            retryPatients.hidden = true;
+            try {
+                const rows = await fetchList(`/api/ward-list${query}`);
+                if (request !== wardRequest) return;
+                renderWardList(rows);
+            } catch (error) {
+                if (request === wardRequest && !(error instanceof SessionEndedError)) showPatientLoadError();
+            }
+        }
 
-            if (rows.length === 0) {
-                wardList.innerHTML = '<p class="muted">No patients yet. Add one below.</p>';
+        function renderWardList(rows) {
+            if (!rows.length) {
+                wardStatus.textContent = wardFilter.value ? 'No patients in this ward.' : 'No patients yet. Add a patient to get started.';
                 return;
             }
 
-            const body = rows.map(row => {
+            wardStatus.textContent = `${rows.length} ${rows.length === 1 ? 'patient' : 'patients'}`;
+            const body = rows.map((row, index) => {
+                const id = escapeHtml(row.patient_id);
                 const risk = row.risk_level
-                    ? `<span class="risk risk-${row.risk_level.replace(/\s+/g, '-')}">${escapeHtml(row.risk_level)}</span>`
-                    : '<span class="risk risk-none">No obs yet</span>';
+                    ? `<span class="risk risk-${escapeHtml(row.risk_level.replace(/\s+/g, '-'))}">${escapeHtml(row.risk_level)}</span>`
+                    : '<span class="risk risk-none">No observations</span>';
                 const last = row.last_observed_at
                     ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-                    : '-';
-                return `<tr class="clickable" data-patient="${escapeHtml(row.patient_id)}" title="Record an observation">
+                    : '—';
+                return `<tr>
                     <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
-                    <td>${escapeHtml(row.patient_id)}</td><td>${escapeHtml(row.name)}</td>
-                    <td>${row.total_score ?? '-'}</td><td>${risk}</td><td>${escapeHtml(last)}</td></tr>`;
+                    <th scope="row">${id}</th><td>${escapeHtml(row.name)}</td>
+                    <td>${escapeHtml(row.total_score ?? '—')}</td><td>${risk}</td><td>${escapeHtml(last)}</td>
+                    <td><div class="actions">
+                        <button type="button" class="secondary" data-observe="${index}" aria-label="Record observation for ${id}">Observe</button>
+                        <button type="button" class="secondary" data-edit="${index}" aria-label="Edit patient ${id}">Edit</button>
+                    </div></td></tr>`;
             }).join('');
 
-            wardList.innerHTML = `<table class="breakdown">
-                <tr><th>Ward</th><th>Bed</th><th>ID</th><th>Name</th><th>Score</th><th>Risk</th><th>Last obs</th></tr>
-                ${body}</table>`;
+            wardList.innerHTML = `<table class="breakdown" aria-label="Ward patients">
+                <thead><tr><th scope="col">Ward</th><th scope="col">Bed</th><th scope="col">Patient ID</th>
+                <th scope="col">Name</th><th scope="col">Score</th><th scope="col">Risk</th>
+                <th scope="col">Last observation</th><th scope="col">Actions</th></tr></thead>
+                <tbody>${body}</tbody></table>`;
+
+            wardList.querySelectorAll('button[data-observe]').forEach(button => {
+                button.addEventListener('click', () => {
+                    obsPatientSelect.value = rows[button.dataset.observe].patient_id;
+                    showPanel('observations', false);
+                    obsPatientSelect.focus();
+                });
+            });
+            wardList.querySelectorAll('button[data-edit]').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (!patientSubmit.disabled) setPatientEditor(rows[button.dataset.edit], button);
+                });
+            });
         }
 
         async function loadEscalations() {
@@ -764,59 +988,84 @@
                 ${rows}</table>`;
         }
 
-        wardFilter.addEventListener('change', () => loadWardList().catch(() => {}));
-
-        wardList.addEventListener('click', (e) => {
-            const row = e.target.closest('tr[data-patient]');
-            if (!row) return;
-            obsPatientSelect.value = row.dataset.patient;
-            obsForm.scrollIntoView({ behavior: 'smooth' });
+        wardFilter.addEventListener('change', refreshWardList);
+        retryPatients.addEventListener('click', () => refreshPatients());
+        patientCancel.addEventListener('click', () => {
+            const trigger = editTrigger;
+            setPatientEditor();
+            patientEditor.open = false;
+            (trigger?.isConnected ? trigger : patientSummary).focus();
         });
 
-        patientForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        for (const form of [obsForm, patientForm]) {
+            form.addEventListener('input', (event) => {
+                if (event.target.matches('.field-invalid')) clearFieldError(event.target);
+            });
+        }
+
+        patientForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (patientSubmit.disabled) return;
             clearFieldErrors(patientForm);
             patientError.style.display = 'none';
             patientSuccess.style.display = 'none';
 
             const body = {};
-            for (const id of ['patient_id', 'name', 'ward', 'bed']) {
-                body[id] = document.getElementById(`pat-${id}`).value;
+            const errors = {};
+            const patient = editingPatient;
+            for (const field of patientFields) {
+                if (patient && field === 'patient_id') continue;
+                body[field] = document.getElementById(`pat-${field}`).value.trim();
+                if (!body[field]) errors[field] = 'This field is required.';
+            }
+            if (Object.keys(errors).length) {
+                showMessage(patientError, 'Check the highlighted fields before saving.');
+                showFieldErrors(patientForm, 'pat', errors);
+                return;
             }
 
+            patientSubmit.disabled = true;
+            patientCancel.disabled = true;
             try {
-                const res = await apiFetch('/api/patients', {
-                    method: 'POST',
+                const url = patient ? `/api/patients/${encodeURIComponent(patient.patient_id)}` : '/api/patients';
+                const res = await apiFetch(url, {
+                    method: patient ? 'PATCH' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
-                const data = await res.json();
 
+                if (patient && [404, 405, 501].includes(res.status)) {
+                    showMessage(patientError, 'Patient updates are unavailable. The record or update endpoint could not be found.');
+                    return;
+                }
                 if (res.status === 403) {
-                    patientError.textContent = 'Your account does not have permission to add patients.';
-                    patientError.style.display = 'block';
-                    return;
-                }
-                if (!res.ok) {
-                    patientError.textContent = res.status === 409
-                        ? data.detail
-                        : 'Patient was not saved. Please fix the highlighted fields.';
-                    patientError.style.display = 'block';
-                    for (const [field, message] of Object.entries(data.errors || {})) markInvalid(field, message, 'pat');
+                    showMessage(patientError, 'Your account does not have permission to save patients.');
                     return;
                 }
 
-                patientSuccess.textContent = `Patient ${data.patient_id} added to ${data.ward}, bed ${data.bed}.`;
-                patientSuccess.style.display = 'block';
-                patientForm.reset();
+                const data = res.status === 204 ? { ...patient, ...body } : await res.json();
+                if (!res.ok) {
+                    const message = typeof data.detail === 'string' ? data.detail : 'Unable to save the patient.';
+                    showMessage(patientError, message);
+                    showFieldErrors(patientForm, 'pat', data.errors || {});
+                    return;
+                }
+
+                setPatientEditor();
+                showMessage(patientSuccess, `Patient ${data.patient_id} ${patient ? 'updated' : 'added'}.`);
+                if (!document.getElementById('patients-panel').hidden) {
+                    document.getElementById('pat-patient_id').focus();
+                }
                 await refreshPatients(data.patient_id);
             } catch (error) {
-                if (error instanceof SessionEndedError) return;
-                patientError.textContent = 'Unable to confirm the save. Please check your connection before trying again.';
-                patientError.style.display = 'block';
+                if (!(error instanceof SessionEndedError)) {
+                    showMessage(patientError, 'Unable to confirm the save. Check your connection before trying again.');
+                }
+            } finally {
+                patientSubmit.disabled = false;
+                patientCancel.disabled = false;
             }
         });
-
     </script>
 </body>
 

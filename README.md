@@ -58,7 +58,7 @@ Open http://127.0.0.1:8000 and sign in with a demo account. (If Windows reports 
 | Clinician | `clinician` | `password123` |
 | Admin | `admin` | `password123` |
 
-Nurse and Clinician accounts can record and read observations. Admin accounts are reserved for administration and cannot access clinical endpoints. Patient self-registration has been removed. Add a patient under **+ Add patient** (for example `P-001`, `Ward A`, bed `1`), choose them in the **Patient** list, or click their row in the ward list, then enter the seven vital signs, and press **Save & Score**. Observations are only allowed for patients that exist. If the observation needs escalation (for example consciousness `V`), an alert is shown and the escalation appears under **Open Escalations** when signed in as `clinician`. Interactive API documentation is at http://127.0.0.1:8000/docs.
+Nurse and Clinician accounts can record and read observations. Admin accounts are reserved for administration and cannot access clinical endpoints. Patient self-registration has been removed. From **Ward List**, open **Add patient** to create a synthetic record. Use the row’s **Observe** action or select the patient under **Record Observation**, then enter the seven observations and choose **Save & Score**. The UI labels the current Clinician role **Charge nurse**. Observations are only allowed for patients that exist. If the observation needs escalation (for example consciousness `V`), an alert is shown and the escalation appears under **Open Escalations** when signed in as `clinician`. Interactive API documentation is at http://127.0.0.1:8000/docs.
 
 **Command-line entry** (no web server needed): `python observations.py`
 
@@ -67,11 +67,24 @@ Observations are saved to `observations.json`, patients to `patients.json` and e
 ## Running the tests
 
 ```bash
-pytest -v          # all automated tests
+pytest -v          # backend tests
 flake8 .           # lint (also run in CI)
 ```
 
 The test plan and the mapping from user stories to tests are in [`docs/TESTING.md`](docs/TESTING.md). GitHub Actions runs lint and the tests on every push and pull request (`.github/workflows/ci.yml`).
+
+
+Browser tests run separately with Node.js 20 or newer and the Python dependencies installed.
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+Playwright starts an isolated FastAPI server on port 8767 with temporary storage. It uses the repository's `.venv` when available. Set `CARESIGHT_PYTHON` to select a different Python executable.
+
+The patient edit form proposes `PATCH /api/patients/{patient_id}` with `name`, `ward` and `bed` in the JSON body. It expects the updated patient record or an empty `204`, and supports the existing field error format for validation and conflicts. The current backend has no update route, so the browser tests stub the update and verify both success and the unavailable-route message.
 
 ## Project layout
 
