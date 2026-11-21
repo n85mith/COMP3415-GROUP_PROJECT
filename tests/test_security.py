@@ -78,3 +78,4 @@ def test_login_does_not_accept_patient_role(client, monkeypatch):
     )
 
     assert response.status_code == 401
+    
