@@ -1,20 +1,26 @@
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+import auth as auth_module
 import escalations
+import notifications
 import observations
 import patients
+import staff
 from auth import (
-    ROLES, SESSION_TTL_SECONDS, USERS, bearer_scheme, create_session, get_current_user,
+    ROLES, SESSION_TTL_SECONDS, bearer_scheme, create_session, get_account, get_current_user,
     require_role, revoke_session, verify_password,
 )
 from scoring import score_observation
+
+USERS = auth_module.USERS
 
 app = FastAPI(title="CareSight")
 
@@ -52,6 +58,18 @@ class ObservationRequest(BaseModel):
     temperature: Optional[Any] = None
 
 
+class StaffRequest(BaseModel):
+    username: str = ""
+    name: str = ""
+    password: str = ""
+    role: str = ""
+    ward: Optional[str] = None
+
+
+class WardRequest(BaseModel):
+    name: str = ""
+
+
 @app.get("/")
 def serve_ui():
     return FileResponse(Path(__file__).parent / "index.html")
@@ -59,9 +77,13 @@ def serve_ui():
 
 @app.post("/api/login")
 def login(data: LoginRequest, response: Response):
-    username = data.username.lower().strip()
-    user = USERS.get(username)
-    if not user or user["role"] not in ROLES or not verify_password(data.password, user["password"]):
+    username = data.username.strip().lower()
+    user = get_account(username)
+    if (
+        not user
+        or user["role"] not in ROLES
+        or not verify_password(data.password, user["password"])
+    ):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     response.headers["Cache-Control"] = "no-store"
@@ -72,6 +94,7 @@ def login(data: LoginRequest, response: Response):
         "username": username,
         "name": user["name"],
         "role": user["role"],
+        "ward": user.get("ward"),
     }
 
 
@@ -86,6 +109,7 @@ def logout(
 @app.post("/api/observations")
 def record_observation(
     data: ObservationRequest,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_role("Nurse", "Clinician")),
 ):
     values = data.model_dump()
@@ -113,6 +137,11 @@ def record_observation(
     score = score_observation(observation)
     patient = patients.get_patient(observation["patient_id"]) or {}
     escalation = escalations.create_escalation_if_required(observation, score, ward=patient.get("ward"))
+    if escalation is not None:
+        background_tasks.add_task(
+            notifications.send_escalation_notification,
+            escalation,
+        )
 
     return {"observation": observation, "score": score, "escalation": escalation}
 
@@ -211,6 +240,70 @@ def ward_list(
         })
 
     return rows
+
+
+@app.get("/api/admin/staff")
+def list_admin_staff(user: dict = Depends(require_role("Admin"))):
+    try:
+        return staff.list_staff()
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=503, detail="Staff storage is unavailable")
+
+
+@app.post("/api/admin/staff", status_code=201)
+def create_admin_staff(
+    data: StaffRequest,
+    user: dict = Depends(require_role("Admin")),
+):
+    try:
+        return staff.create_staff(
+            data.username,
+            data.name,
+            data.password,
+            data.role,
+            data.ward,
+        )
+    except staff.StaffValidationError as err:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(err), "errors": {"staff": str(err)}},
+        )
+    except staff.StaffConflictError as err:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(err), "errors": {"username": str(err)}},
+        )
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=503, detail="Staff storage is unavailable")
+
+
+@app.get("/api/admin/wards")
+def list_admin_wards(user: dict = Depends(require_role("Admin"))):
+    try:
+        return staff.list_wards()
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=503, detail="Staff storage is unavailable")
+
+
+@app.post("/api/admin/wards", status_code=201)
+def create_admin_ward(
+    data: WardRequest,
+    user: dict = Depends(require_role("Admin")),
+):
+    try:
+        return staff.create_ward(data.name)
+    except staff.StaffValidationError as err:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(err), "errors": {"name": str(err)}},
+        )
+    except staff.StaffConflictError as err:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(err), "errors": {"name": str(err)}},
+        )
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=503, detail="Staff storage is unavailable")
 
 
 @app.get("/api/escalations")

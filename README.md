@@ -30,10 +30,11 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 | US-04 | One NEWS2 scorer per parameter behind a common interface, with thresholds in one file | `scoring/scorers.py`, `scoring/bands.py` |
 | US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
 | US-06 | Score breakdown with raw values, sub-scores and total; parameters scoring 3 are highlighted | `index.html`, `scoring/news2.py` |
-| US-07 | Observations with a total of 5+ or any single 3 create an Open escalation, routed by risk level (High: critical care outreach, Medium: ward doctor or acute care team, Low-medium: ward doctor) and tagged with the patient's ward; clinicians see open escalations by risk level, then oldest first, filterable by ward | `escalations.py`, `main.py`, `index.html` |
+| US-07 | Observations with a total of 5+ or any single 3 create an Open escalation, routed by risk level (High: critical care outreach, Medium: ward doctor or acute care team, Low-medium: ward doctor) and tagged with the patient's ward; clinicians see open escalations by risk level, then oldest first, filterable by ward; configured recipients receive a best-effort email notification | `escalations.py`, `notifications.py`, `main.py`, `index.html` |
 | US-08 (backend) | Clinicians acknowledge an open escalation with a required response note; the record keeps who acknowledged it and when; an escalation can only be acknowledged once | `escalations.py`, `main.py` |
+| US-12 | Admin-managed wards and staff accounts with server-side role enforcement | `staff.py`, `auth.py`, `main.py`, `index.html` |
 
-Not yet built: overdue flags (US-09), trends (US-10), audit log (US-11), admin pages (US-12), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
+Not yet built: overdue flags (US-09), trends (US-10), audit log (US-11), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
@@ -64,6 +65,33 @@ Nurse and Clinician accounts can record and read observations. Admin accounts ar
 **Command-line entry** (no web server needed): `python observations.py`
 
 All data is stored in a SQLite database, `caresight.db`, next to the code (ignored by git). Set `CARESIGHT_DB` to use a different file. If old `patients.json`, `observations.json` or `escalations.json` files are present when the database is first created, their data is imported once and the JSON files are left untouched.
+
+### US-12 staff and ward administration
+
+An Admin can open **Administration** to create wards and staff accounts. Wards are managed in `staff.json` and may be used alongside ward names found in existing patient records. New staff passwords must contain 12-128 characters. Nurse and Clinician accounts require an existing ward; Admin accounts may omit one.
+
+Demo accounts remain available with the usernames and password listed above. Local staff accounts are stored in `staff.json`, which is git-ignored together with temporary `.staff-*.tmp` files. Do not add real account credentials or `staff.json` to Git.
+
+Staff storage and sessions use in-process JSON and memory respectively, so one server worker is required and sessions are cleared on restart. Ward assignment is account metadata; it does not restrict clinical patient or observation access.
+
+### US-07 escalation email notifications
+
+Email is disabled by default. To enable local testing, use a dedicated project Gmail account, turn on 2-Step Verification, and create a Google App Password if App Passwords are supported for that account. Use only the App Password; never use or share the account's normal Google password. Do not commit credentials.
+
+Copy `.env.example` to `.env`, then set `CARESIGHT_EMAIL_ENABLED=true`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, and `ESCALATION_RECIPIENTS`. The recipients value is a comma-separated explicit allowlist; for a manual test, use only a test mailbox you control. This project does not automatically load `.env` files. Export its values in the shell before starting the server:
+
+```bash
+set -a
+. ./.env
+set +a
+uvicorn main:app --reload
+```
+
+Restart the server after changing the environment. `.env` is git-ignored; `.env.example` contains blank placeholders only.
+
+To manually test, sign in with a clinical account, create a synthetic patient, then save an observation that qualifies for an escalation (for example, consciousness `C` triggers a single-parameter escalation). Confirm that the escalation appears in the Clinician view and that the configured test recipient receives a message with the subject `[CareSight DEMO] Escalation alert`; check spam if it is not in the inbox. This project does not send a test message at startup or through an unauthenticated endpoint.
+
+Delivery uses verified STARTTLS and is best-effort via an in-process background task. Invalid configuration or SMTP/network failures are logged in sanitized form and do not undo a saved observation or escalation. There are no automatic retries or durable queue, and process exit can lose a pending task; repeated qualifying observations create separate escalations and may each generate a notification. Notifications are for an educational simulation only, not a real clinical alert system.
 
 ## Running the tests
 
@@ -101,6 +129,7 @@ The patient edit form uses `PATCH /api/patients/{patient_id}` with any of `name`
 auth.py             Shared session management and require_role dependency
 main.py             FastAPI app: login, logout, patient, ward list, observation, history and escalation endpoints
 db.py               SQLite connection, schema and one-time import of old JSON data
+notifications.py    Best-effort Gmail STARTTLS delivery for newly created escalations
 index.html          Single-page UI: sign in, ward list, add patient, observation entry, score breakdown
 observations.py     Observation fields, validation and storage (also a CLI)
 patients.py         Patient records (ID, name, ward, bed): create, update, list

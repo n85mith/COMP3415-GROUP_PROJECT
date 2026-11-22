@@ -132,4 +132,8 @@ def list_patients(ward=None):
 def list_wards():
     with db.transaction() as conn:
         rows = conn.execute("SELECT DISTINCT ward FROM patients").fetchall()
-    return sorted({r["ward"] for r in rows}, key=str.lower)
+    wards = {r["ward"] for r in rows}
+    import staff
+
+    wards.update(staff.list_wards())
+    return sorted(wards, key=str.lower)

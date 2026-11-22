@@ -1,15 +1,19 @@
+import os
 import tempfile
 from pathlib import Path
 
 import uvicorn
 
 import db
+import staff
 
 
 def run():
+    os.environ["CARESIGHT_EMAIL_ENABLED"] = "false"
     with tempfile.TemporaryDirectory(prefix="caresight-browser-") as directory:
         root = Path(directory)
         db.DB_FILE = str(root / "caresight.db")
+        staff.STAFF_FILE = root / "staff.json"
         uvicorn.run("main:app", host="127.0.0.1", port=8767)
 
 

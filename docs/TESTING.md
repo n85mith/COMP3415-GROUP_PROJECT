@@ -10,7 +10,7 @@
 | Integration | Login, recording an observation through the HTTP API, validation failures, scored history | FastAPI `TestClient` against the real app | `tests/test_api.py` |
 | Integration | Sessions and role checks: missing, invalid, expired and revoked tokens, wrong roles, storage unchanged on refusal | FastAPI `TestClient` | `tests/test_auth.py`, `tests/test_access.py` |
 | Unit + integration | Patient records: required fields and length limits, duplicate IDs, occupied beds, ward filter, single-patient view, partial and full updates, bed conflicts on update, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
-| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing, persisted in the database | `pytest`, `TestClient` | `tests/test_escalations.py` |
+| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing, persisted in the database, best-effort email notification using mocked SMTP | `pytest`, `TestClient` | `tests/test_escalations.py`, `tests/test_notifications.py` |
 | Unit + integration | Routing and acknowledgement: route and urgency per risk level, ward filter, required response note, acknowledge once only (including 8 simultaneous attempts), role checks, open escalations follow a patient who changes ward | `pytest`, `TestClient`, threads | `tests/test_acknowledge.py` |
 | System (browser) | Sign-in and role navigation, patient create/edit, observation form by keyboard on a narrow screen | Playwright (Chromium) against a server with a temporary database | `browser_tests/workspace.spec.cjs` |
 
@@ -66,6 +66,7 @@ Combined with the in-progress US-12 and US-07 email branch (`feature/us-07-email
 | **US-08** Clinician acknowledges with a response note; who and when are recorded; status becomes Acknowledged | `POST /api/escalations/{id}/acknowledge` | `test_acknowledge.py::test_clinician_acknowledges_with_a_response_note`, `test_acknowledged_escalation_leaves_the_open_list` |
 | **US-08** An escalation cannot be acknowledged twice, even by two clinicians at once | conditional update inside a write transaction | `test_acknowledge.py::test_escalation_cannot_be_acknowledged_twice`, `test_simultaneous_acknowledgements_only_one_wins` |
 | **US-08** Only clinicians can acknowledge; a missing note is rejected and nothing changes | `require_role("Clinician")`, `validate_response_note` | `test_acknowledge.py::test_only_clinicians_can_acknowledge`, `test_acknowledge_needs_a_valid_note` |
+| **US-07** A newly persisted escalation schedules one sanitized, verified-TLS email notification; no escalation means no notification | `main.py` background task, `notifications.py` runtime configuration and SMTP sender | `tests/test_notifications.py` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested
