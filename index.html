@@ -29,6 +29,8 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             width: 100%;
             max-width: 400px;
+            min-width: 0;
+            overflow-x: hidden;
         }
 
         h1 {
@@ -316,6 +318,61 @@
             .section-head { gap: 0.5rem; }
         }
 
+        .badge-overdue {
+            background: #b91c1c;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        tr.row-overdue td { background: #fef2f2; }
+        tr.row-overdue td:first-child { border-left: 5px solid #b91c1c; }
+
+        #esc-list {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+        }
+
+        #esc-list table.breakdown {
+            width: max-content;
+            min-width: 100%;
+            margin: 0;
+        }
+
+        #esc-list th,
+        #esc-list td {
+            white-space: nowrap;
+        }
+
+        #esc-list td:nth-child(6) {
+            white-space: normal;
+            min-width: 180px;
+            max-width: 240px;
+        }
+
+        #esc-list button { width: auto; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+
+        tr.esc-High td:first-child { border-left: 5px solid #e62828; }
+        tr.esc-High td { background: #fef2f2; }
+        tr.esc-Medium td:first-child { border-left: 5px solid #fa8015; }
+        tr.esc-Medium td { background: #fff7ed; }
+        tr.esc-Low-medium td:first-child { border-left: 5px solid #f1a41f; }
+        tr.esc-Low-medium td { background: #fefce8; }
+
+        #ack-note {
+            width: 100%;
+            padding: 0.65rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            font: inherit;
+        }
+
     </style>
 </head>
 
@@ -373,11 +430,11 @@
             <div class="obs-grid">
                 <form id="staff-form" novalidate>
                     <h3>Create staff account</h3>
-                    <label for="staff-username">Username</label>
+                    <label for="staff-username">Staff username</label>
                     <input type="text" id="staff-username" autocomplete="off" required />
                     <label for="staff-name">Full name</label>
                     <input type="text" id="staff-name" autocomplete="name" required />
-                    <label for="staff-password">Password</label>
+                    <label for="staff-password">Initial password</label>
                     <input type="password" id="staff-password" autocomplete="new-password" required />
                     <p class="muted">Password must contain 12-128 characters.</p>
                     <label for="staff-role">Role</label>
@@ -405,9 +462,28 @@
         <div id="esc-section" style="display: none;">
             <div class="section-head">
                 <h2 id="escalations-heading" tabindex="-1" style="font-size: 1.1rem; color: #991b1b;">Open Escalations</h2>
-                <button type="button" onclick="loadEscalations().catch(() => {})">Refresh</button>
+                <div class="actions">
+                    <label for="esc-status-filter" class="muted" style="margin: 0;">Show</label>
+                    <select id="esc-status-filter">
+                        <option value="Open" selected>Open</option>
+                        <option value="Acknowledged">Acknowledged</option>
+                        <option value="">All</option>
+                    </select>
+                    <button id="esc-refresh" type="button">Refresh</button>
+                </div>
             </div>
             <div id="esc-list"></div>
+            <section id="ack-panel" class="panel" hidden aria-labelledby="ack-heading">
+                <h3 id="ack-heading" style="margin-top: 0; font-size: 1rem; color: #1e3a8a;">Respond to Escalation</h3>
+                <p id="ack-target-info" class="muted"></p>
+                <label for="ack-note">Clinical action / response note</label>
+                <textarea id="ack-note" rows="3" maxlength="1000" placeholder="Describe clinical review or action taken..." required></textarea>
+                <div class="error" id="ack-error" role="alert"></div>
+                <div class="actions">
+                    <button id="ack-submit" type="button">Confirm &amp; Acknowledge</button>
+                    <button id="ack-cancel" type="button" class="secondary">Cancel</button>
+                </div>
+            </section>
         </div>
 
         <div id="obs-section" style="display: none;">
@@ -421,6 +497,15 @@
                 <div id="ward-list" role="region" aria-label="Patient list" tabindex="0"></div>
                 <p id="ward-status" class="muted" role="status"></p>
                 <button id="retry-patients" class="secondary" type="button" hidden>Retry patient list</button>
+
+                <div id="trend-panel" class="panel" hidden>
+                    <div class="section-head">
+                        <h3 id="trend-heading" tabindex="-1" style="font-size: 1rem; color: #1e3a8a; margin: 0;">NEWS2 Score Trend - <span id="trend-patient-label"></span></h3>
+                        <button id="trend-close" type="button" class="secondary">Close trend</button>
+                    </div>
+                    <div id="trend-chart" style="margin-top: 0.75rem;"></div>
+                </div>
+
 
                 <details class="add-patient" id="add-patient">
                     <summary id="patient-summary">Add patient</summary>
@@ -665,6 +750,10 @@
             showView('login');
             if (message) showMessage(loginError, message);
             usernameInput.focus();
+            closeAckPanel();
+            trendPatient = null;
+            trendPanel.hidden = true;
+            document.getElementById('trend-chart').replaceChildren();
         }
 
         logoutButton.addEventListener('click', async () => {
@@ -980,6 +1069,7 @@
                 if (!document.getElementById('observations-panel').hidden) scoreResult.focus();
                 refreshWardList();
                 if (isChargeNurse(currentRole)) loadEscalations().catch(() => {});
+                if (trendPatient === body.patient_id) loadScoreTrend(body.patient_id).catch(() => {});
             } catch (error) {
                 if (!(error instanceof SessionEndedError)) {
                     showMessage(obsError, 'Unable to confirm the save. Check your connection before trying again.');
@@ -1155,14 +1245,35 @@
                     ? `<span class="risk risk-${escapeHtml(row.risk_level.replace(/\s+/g, '-'))}">${escapeHtml(row.risk_level)}</span>`
                     : '<span class="risk risk-none">No observations</span>';
                 const last = row.last_observed_at
+                
                     ? new Date(row.last_observed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
                     : '—';
-                return `<tr>
+
+                let nextDue = '—';
+                let isOverdue = false;
+                if (row.next_observation_due) {
+                    if (row.risk_level === 'High') {
+                        nextDue = '<span class="badge">Continuous</span>';
+                    } else {
+                        const dueDate = new Date(row.next_observation_due);
+                        const dueTime = dueDate.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+                        if (dueDate < new Date()) {
+                            isOverdue = true;
+                            nextDue = `<span class="badge-overdue">OVERDUE</span> (${escapeHtml(dueTime)})`;
+                        } else {
+                            nextDue = escapeHtml(dueTime);
+                        }
+                    }
+                }
+
+                return `<tr class="${isOverdue ? 'row-overdue' : ''}">
                     <td>${escapeHtml(row.ward)}</td><td>${escapeHtml(row.bed)}</td>
                     <th scope="row">${id}</th><td>${escapeHtml(row.name)}</td>
                     <td>${escapeHtml(row.total_score ?? '—')}</td><td>${risk}</td><td>${escapeHtml(last)}</td>
+                    <td>${nextDue}</td>
                     <td><div class="actions">
                         <button type="button" class="secondary" data-observe="${index}" aria-label="Record observation for ${id}">Observe</button>
+                        <button type="button" class="secondary" data-trend="${index}" aria-label="Show score trend for ${id}">Trend</button>
                         <button type="button" class="secondary" data-edit="${index}" aria-label="Edit patient ${id}">Edit</button>
                     </div></td></tr>`;
             }).join('');
@@ -1170,7 +1281,8 @@
             wardList.innerHTML = `<table class="breakdown" aria-label="Ward patients">
                 <thead><tr><th scope="col">Ward</th><th scope="col">Bed</th><th scope="col">Patient ID</th>
                 <th scope="col">Name</th><th scope="col">Score</th><th scope="col">Risk</th>
-                <th scope="col">Last observation</th><th scope="col">Actions</th></tr></thead>
+                <th scope="col">Last observation</th><th scope="col">Next observation</th>
+                <th scope="col">Actions</th></tr></thead>
                 <tbody>${body}</tbody></table>`;
 
             wardList.querySelectorAll('button[data-observe]').forEach(button => {
@@ -1178,6 +1290,12 @@
                     obsPatientSelect.value = rows[button.dataset.observe].patient_id;
                     showPanel('observations', false);
                     obsPatientSelect.focus();
+                });
+            });
+            wardList.querySelectorAll('button[data-trend]').forEach(button => {
+                button.addEventListener('click', () => {
+                    trendTrigger = button;
+                    loadScoreTrend(rows[button.dataset.trend].patient_id, true).catch(() => {});
                 });
             });
             wardList.querySelectorAll('button[data-edit]').forEach(button => {
@@ -1188,35 +1306,190 @@
         }
 
         async function loadEscalations() {
+        
             const escList = document.getElementById('esc-list');
-            const res = await apiFetch('/api/escalations');
+            const status = document.getElementById('esc-status-filter').value;
+            const label = status ? status : 'All';
+            document.getElementById('escalations-heading').textContent = `${label} Escalations`;
+            const query = status ? `?status=${encodeURIComponent(status)}` : '?status=';
+            const token = sessionToken;
+            const res = await apiFetch(`/api/escalations${query}`);
+            if (token !== sessionToken) return;
             if (!res.ok) {
                 escList.innerHTML = '<p class="muted">Unable to load escalations.</p>';
                 return;
             }
             const items = await res.json();
             if (items.length === 0) {
-                escList.innerHTML = '<p class="muted">No open escalations.</p>';
+                escList.innerHTML = `<p class="muted">No ${status ? label.toLowerCase() + ' ' : ''}escalations.</p>`;
                 return;
             }
             const rows = items.map(e => {
                 const where = e.ward ? `${e.ward}, bed ${e.bed}` : '-';
                 const raised = new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                return `<tr>
+                const riskClass = `esc-${e.risk_level.replace(/\s+/g, '-')}`;
+                const actionCell = e.status === 'Open'
+                    ? `<button type="button" data-ack-id="${escapeHtml(e.id)}" data-patient-id="${escapeHtml(e.patient_id)}" aria-label="Respond to escalation for ${escapeHtml(e.patient_id)}">Respond</button>`
+                    : `<span class="muted">${escapeHtml(e.acknowledged_by || '')}${e.response_note ? ': ' + escapeHtml(e.response_note) : ''}</span>`;
+                return `<tr class="${riskClass}">
                     <td><span class="risk risk-${e.risk_level.replace(/\s+/g, '-')}">${escapeHtml(e.risk_level)}</span></td>
-                    <td>${e.total_score}</td>
+                    <td>${escapeHtml(e.total_score)}</td>
                     <td>${escapeHtml(e.patient_id)}${e.patient_name ? ' - ' + escapeHtml(e.patient_name) : ''}</td>
                     <td>${escapeHtml(where)}</td>
                     <td>${escapeHtml(e.parameters_scoring_three.join(', ') || '-')}</td>
                     <td>${escapeHtml(e.clinical_response)}</td>
                     <td>${escapeHtml(raised)}</td>
-                    <td>${escapeHtml(e.recorded_by)}</td></tr>`;
+                    <td>${escapeHtml(e.recorded_by)}</td>
+                    <td><span class="badge">${escapeHtml(e.status)}</span></td>
+                    <td>${actionCell}</td></tr>`;
             }).join('');
-            escList.innerHTML = `<table class="breakdown">
-                <tr><th>Risk</th><th>Score</th><th>Patient</th><th>Location</th><th>Scored 3</th>
-                <th>Required response</th><th>Raised</th><th>By</th></tr>
-                ${rows}</table>`;
+            escList.innerHTML = `<table class="breakdown" aria-label="Escalations">
+                <thead><tr><th scope="col">Risk</th><th scope="col">Score</th><th scope="col">Patient</th>
+                <th scope="col">Location</th><th scope="col">Scored 3</th><th scope="col">Required response</th>
+                <th scope="col">Raised</th><th scope="col">By</th><th scope="col">Status</th>
+                <th scope="col">Action / Details</th></tr></thead>
+                <tbody>${rows}</tbody></table>`;
         }
+        let currentAckID = null;
+
+        let trendPatient = null;
+        let trendTrigger = null;
+        let ackTrigger = null;
+        const ackPanel = document.getElementById('ack-panel');
+        const ackError = document.getElementById('ack-error');
+        const ackNote = document.getElementById('ack-note');
+        const ackSubmit = document.getElementById('ack-submit');
+        const trendPanel = document.getElementById('trend-panel');
+
+        function openAckPanel(escId, patientId, trigger) {
+            currentAckID = escId;
+            ackTrigger = trigger;
+            document.getElementById('ack-target-info').textContent = `Acknowledging escalation ${escId} for patient ${patientId}`;
+            ackNote.value = '';
+            ackError.style.display = 'none';
+            ackPanel.hidden = false;
+            ackPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            ackNote.focus();
+        }
+
+        function closeAckPanel() {
+            currentAckID = null;
+            ackPanel.hidden = true;
+            if (ackTrigger?.isConnected) ackTrigger.focus();
+            ackTrigger = null;
+        }
+
+        async function submitAcknowledge() {
+            if (ackSubmit.disabled) return;
+            ackError.style.display = 'none';
+            const note = ackNote.value.trim();
+
+            if (!note) {
+                showMessage(ackError, 'Enter a clinical response note before confirming.');
+                ackNote.focus();
+                return;
+            }
+
+            ackSubmit.disabled = true;
+            try {
+                const res = await apiFetch(`/api/escalations/${encodeURIComponent(currentAckID)}/acknowledge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ response_note: note })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    showMessage(ackError, typeof data.detail === 'string' ? data.detail : 'Unable to acknowledge escalation.');
+                    if (res.status === 409) loadEscalations().catch(() => {});
+                    return;
+                }
+                ackTrigger = null;
+                closeAckPanel();
+                await loadEscalations();
+                document.getElementById('escalations-heading').focus();
+            } catch (error) {
+                if (error instanceof SessionEndedError) return;
+                showMessage(ackError, 'Network error while acknowledging escalation.');
+            } finally {
+                ackSubmit.disabled = false;
+            }
+        }
+
+        function closeTrend() {
+            trendPatient = null;
+            trendPanel.hidden = true;
+            document.getElementById('trend-chart').replaceChildren();
+            if (trendTrigger?.isConnected) trendTrigger.focus();
+            trendTrigger = null;
+        }
+
+        async function loadScoreTrend(patientId, focus = false) {
+            const token = sessionToken;
+            const chart = document.getElementById('trend-chart');
+            trendPatient = patientId;
+            document.getElementById('trend-patient-label').textContent = patientId;
+            chart.innerHTML = '<p class="muted">Loading trend…</p>';
+            trendPanel.hidden = false;
+            if (focus) document.getElementById('trend-heading').focus();
+
+            const res = await apiFetch(`/api/patients/${encodeURIComponent(patientId)}/observations`);
+            if (token !== sessionToken || trendPatient !== patientId) return;
+            if (!res.ok) {
+                chart.innerHTML = '<p class="muted">Unable to load observation history.</p>';
+                return;
+            }
+            const history = await res.json();
+            if (history.length === 0) {
+                chart.innerHTML = '<p class="muted">No observations recorded for this patient.</p>';
+                return;
+            }
+            const sorted = [...history].sort((a, b) =>
+                a.observation.recorded_at.localeCompare(b.observation.recorded_at)
+            );
+
+            const w = 560, h = 160, pad = 28;
+            const maxScore = Math.max(10, ...sorted.map(item => item.score.total_score));
+            const riskColors = { Low: '#16a34a', 'Low-medium': '#ca8a04', Medium: '#ea580c', High: '#dc2626' };
+
+            const points = sorted.map((item, i) => {
+                const x = sorted.length === 1
+                    ? w / 2
+                    : pad + (i / (sorted.length - 1)) * (w - 2 * pad);
+                const y = h - pad - (item.score.total_score / maxScore) * (h - 2 * pad);
+                const time = new Date(item.observation.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return { x, y, total: item.score.total_score, risk: item.score.risk_level, time };
+            });
+
+            const polyline = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+            const dots = points.map(p => {
+                const color = riskColors[p.risk] || '#2563eb';
+                return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${color}" stroke="white" stroke-width="1.5">
+                            <title>${escapeHtml(p.time)} - Score: ${p.total} (${escapeHtml(p.risk)})</title>
+                        </circle>
+                        <text x="${p.x.toFixed(1)}" y="${(p.y - 9).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${p.total}</text>
+                        <text x="${p.x.toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(p.time)}</text>`;
+            }).join('');
+            const summary = points.map(p => `${p.time}: ${p.total} (${p.risk})`).join(', ');
+
+            chart.innerHTML = `
+            <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(`NEWS2 scores over time: ${summary}`)}" style="width:100%; height: auto; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#cbd5e1" />
+                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#cbd5e1" />
+                ${points.length > 1 ? `<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="${polyline}" />` : ''}
+                ${dots}
+            </svg>
+            <p class="muted" style="margin: 0.4rem 0 0;">Showing ${points.length} observation(s).</p>`;
+        }
+
+        document.getElementById('esc-status-filter').addEventListener('change', () => loadEscalations().catch(() => {}));
+        document.getElementById('esc-refresh').addEventListener('click', () => loadEscalations().catch(() => {}));
+        document.getElementById('esc-list').addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-ack-id]');
+            if (button) openAckPanel(button.dataset.ackId, button.dataset.patientId, button);
+        });
+        ackSubmit.addEventListener('click', submitAcknowledge);
+        document.getElementById('ack-cancel').addEventListener('click', closeAckPanel);
+        document.getElementById('trend-close').addEventListener('click', closeTrend);
 
         wardFilter.addEventListener('change', refreshWardList);
         retryPatients.addEventListener('click', () => refreshPatients());
