@@ -8,7 +8,6 @@ import security
 from fastapi.testclient import TestClient
 
 import patients
-import staff
 from main import app
 
 
@@ -16,7 +15,6 @@ from main import app
 def isolated_database(tmp_path, monkeypatch):
     monkeypatch.setenv("CARESIGHT_EMAIL_ENABLED", "false")
     monkeypatch.setattr(db, "DB_FILE", str(tmp_path / "caresight.db"))
-    monkeypatch.setattr(staff, "STAFF_FILE", tmp_path / "staff.json")
 
 
 @pytest.fixture

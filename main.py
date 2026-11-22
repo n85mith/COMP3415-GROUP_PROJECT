@@ -1,5 +1,5 @@
+import sqlite3
 from datetime import datetime
-import json
 from pathlib import Path
 from typing import Any, Optional
 
@@ -290,7 +290,7 @@ def ward_list(
 def list_admin_staff(user: dict = Depends(require_role("Admin"))):
     try:
         return staff.list_staff()
-    except (json.JSONDecodeError, ValueError):
+    except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Staff storage is unavailable")
 
 
@@ -320,7 +320,7 @@ def create_admin_staff(
             status_code=409,
             content={"detail": str(err), "errors": {"username": str(err)}},
         )
-    except (json.JSONDecodeError, ValueError):
+    except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Staff storage is unavailable")
 
 
@@ -328,7 +328,7 @@ def create_admin_staff(
 def list_admin_wards(user: dict = Depends(require_role("Admin"))):
     try:
         return staff.list_wards()
-    except (json.JSONDecodeError, ValueError):
+    except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Staff storage is unavailable")
 
 
@@ -351,7 +351,7 @@ def create_admin_ward(
             status_code=409,
             content={"detail": str(err), "errors": {"name": str(err)}},
         )
-    except (json.JSONDecodeError, ValueError):
+    except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Staff storage is unavailable")
 
 

@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     details TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at);
+
+CREATE TABLE IF NOT EXISTS wards (
+    name TEXT PRIMARY KEY COLLATE NOCASE
+);
+
+CREATE TABLE IF NOT EXISTS staff (
+    username TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('Nurse', 'Clinician', 'Admin')),
+    ward TEXT REFERENCES wards (name)
+);
 """
 
 LEGACY_FILES = ("patients.json", "observations.json", "escalations.json")
@@ -130,12 +142,29 @@ def _read_legacy(path):
     return rows
 
 
+def _read_legacy_staff(path):
+    empty = {"staff": {}, "wards": []}
+    if not os.path.exists(path):
+        return empty
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("staff"), dict) or not isinstance(
+            data.get("wards"), list):
+        print(f"Warning: {path} could not be read and was not imported. The file was left unchanged.")
+        return empty
+    return data
+
+
 def _import_legacy_json(conn):
     folder = os.path.dirname(os.path.abspath(DB_FILE))
     patients, observations, escalations = (
         _read_legacy(os.path.join(folder, name)) for name in LEGACY_FILES
     )
-    if not (patients or observations or escalations):
+    staff_data = _read_legacy_staff(os.path.join(folder, "staff.json"))
+    if not (patients or observations or escalations or staff_data["staff"] or staff_data["wards"]):
         return
 
     conn.execute("BEGIN IMMEDIATE")
@@ -163,7 +192,14 @@ def _import_legacy_json(conn):
                  e["recorded_by"], e["total_score"], e["risk_level"],
                  json.dumps(e.get("parameters_scoring_three", [])), e["clinical_response"]),
             )
-    except (KeyError, TypeError, ValueError, sqlite3.Error) as err:
+        for ward in staff_data["wards"]:
+            conn.execute("INSERT OR IGNORE INTO wards (name) VALUES (?)", (ward,))
+        for username, user in staff_data["staff"].items():
+            conn.execute(
+                "INSERT OR IGNORE INTO staff (username, name, password, role, ward) VALUES (?, ?, ?, ?, ?)",
+                (username.lower(), user["name"], user["password"], user["role"], user.get("ward")),
+            )
+    except (KeyError, TypeError, ValueError, AttributeError, sqlite3.Error) as err:
         conn.execute("ROLLBACK")
         print(f"Warning: existing JSON data could not be imported ({err!r}). The JSON files were left unchanged.")
         return

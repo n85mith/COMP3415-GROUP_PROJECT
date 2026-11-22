@@ -1,16 +1,9 @@
-import json
-import os
 import re
-import tempfile
-from pathlib import Path
-from threading import RLock
 
 import auth
+import db
 import security
 from auth import ROLES, hash_password
-
-STAFF_FILE = Path(__file__).with_name("staff.json")
-_store_lock = RLock()
 
 
 class StaffValidationError(ValueError):
@@ -21,59 +14,8 @@ class StaffConflictError(ValueError):
     pass
 
 
-def _load():
-    path = Path(STAFF_FILE)
-    if not path.exists():
-        return {"staff": {}, "wards": []}
-
-    with path.open(encoding="utf-8") as file:
-        data = json.load(file)
-
-    if (
-        not isinstance(data, dict)
-        or not isinstance(data.get("staff"), dict)
-        or not isinstance(data.get("wards"), list)
-        or not all(isinstance(ward, str) for ward in data["wards"])
-        or not all(
-            isinstance(username, str)
-            and isinstance(user, dict)
-            and isinstance(user.get("name"), str)
-            and isinstance(user.get("password"), str)
-            and user.get("role") in ROLES
-            and (
-                user.get("ward") is None
-                or isinstance(user.get("ward"), str)
-            )
-            for username, user in data["staff"].items()
-        )
-    ):
-        raise ValueError("Invalid staff storage format")
-
-    return data
-
-
-def _save(data):
-    path = Path(STAFF_FILE)
-    temporary_path = None
-
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=".staff-",
-            suffix=".tmp",
-            delete=False,
-        ) as file:
-            temporary_path = Path(file.name)
-            json.dump(data, file, indent=2)
-            file.flush()
-            os.fsync(file.fileno())
-
-        os.replace(temporary_path, path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
+def _staff_row(row):
+    return {"name": row["name"], "password": row["password"], "role": row["role"], "ward": row["ward"]}
 
 
 def _text(value, field, maximum):
@@ -106,43 +48,37 @@ def get_staff(username):
     if not isinstance(username, str):
         return None
     username = username.strip().lower()
-    with _store_lock:
-        stored = _load()["staff"].get(username)
-        if stored is not None:
-            return dict(stored)
-        demo = auth.USERS.get(username)
-        return dict(demo) if demo is not None else None
+    with db.transaction() as conn:
+        row = conn.execute("SELECT * FROM staff WHERE username = ?", (username,)).fetchone()
+    if row is not None:
+        return _staff_row(row)
+    demo = auth.USERS.get(username)
+    return dict(demo) if demo is not None else None
 
 
 def list_staff():
-    with _store_lock:
-        stored = _load()["staff"]
-        accounts = {**{key.lower(): dict(value) for key, value in auth.USERS.items()}, **stored}
-        return [
-            _public_user(username, accounts[username])
-            for username in sorted(accounts)
-        ]
+    with db.transaction() as conn:
+        stored = {row["username"]: _staff_row(row) for row in conn.execute("SELECT * FROM staff")}
+    accounts = {**{key.lower(): dict(value) for key, value in auth.USERS.items()}, **stored}
+    return [
+        _public_user(username, accounts[username])
+        for username in sorted(accounts)
+    ]
 
 
 def list_wards():
-    with _store_lock:
-        return sorted(_load()["wards"], key=str.casefold)
+    with db.transaction() as conn:
+        rows = conn.execute("SELECT name FROM wards").fetchall()
+    return sorted((row["name"] for row in rows), key=str.casefold)
 
 
 def create_ward(name):
     name = _text(name, "Ward name", 80)
 
-    with _store_lock:
-        data = _load()
-
-        if any(
-            existing.casefold() == name.casefold()
-            for existing in data["wards"]
-        ):
+    with db.transaction(write=True) as conn:
+        if conn.execute("SELECT 1 FROM wards WHERE name = ? COLLATE NOCASE", (name,)).fetchone():
             raise StaffConflictError("This ward already exists.")
-
-        data["wards"].append(name)
-        _save(data)
+        conn.execute("INSERT INTO wards (name) VALUES (?)", (name,))
 
     return {"name": name}
 
@@ -174,32 +110,20 @@ def create_staff(username, name, password, role, ward=None):
             "Nurses and clinicians must be assigned to a ward."
         )
 
-    with _store_lock:
-        data = _load()
-
-        if any(
-            existing.casefold() == username
-            for existing in auth.USERS
-        ) or any(
-            existing.casefold() == username
-            for existing in data["staff"]
-        ):
+    with db.transaction(write=True) as conn:
+        taken = any(existing.casefold() == username for existing in auth.USERS) or conn.execute(
+            "SELECT 1 FROM staff WHERE username = ?", (username,)
+        ).fetchone()
+        if taken:
             raise StaffConflictError("This username already exists.")
 
         if ward is not None:
-            matching_ward = next(
-                (
-                    existing
-                    for existing in data["wards"]
-                    if existing.casefold() == ward.casefold()
-                ),
-                None,
-            )
-            if matching_ward is None:
+            matching = conn.execute("SELECT name FROM wards WHERE name = ? COLLATE NOCASE", (ward,)).fetchone()
+            if matching is None:
                 raise StaffValidationError(
                     "Create the ward before assigning staff to it."
                 )
-            ward = matching_ward
+            ward = matching["name"]
 
         user = {
             "name": name,
@@ -207,7 +131,9 @@ def create_staff(username, name, password, role, ward=None):
             "role": role,
             "ward": ward,
         }
-        data["staff"][username] = user
-        _save(data)
+        conn.execute(
+            "INSERT INTO staff (username, name, password, role, ward) VALUES (?, ?, ?, ?, ?)",
+            (username, user["name"], user["password"], user["role"], user["ward"]),
+        )
 
     return _public_user(username, user)

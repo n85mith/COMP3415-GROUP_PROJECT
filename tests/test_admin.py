@@ -1,4 +1,4 @@
-from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -192,10 +192,18 @@ def test_admin_created_admin_cannot_use_clinical_routes(client):
     assert client.get("/api/admin/staff", headers=admin_headers).status_code == 200
 
 
-def test_corrupt_staff_storage_is_not_overwritten(client):
-    Path(staff.STAFF_FILE).write_text("{broken")
-    before = Path(staff.STAFF_FILE).read_bytes()
+def test_unavailable_staff_storage_returns_503(client, monkeypatch):
     headers = {"Authorization": login(client)["Authorization"]}
-    response = client.get("/api/admin/staff", headers=headers)
-    assert response.status_code == 503
-    assert Path(staff.STAFF_FILE).read_bytes() == before
+
+    def broken(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    for name in ("list_staff", "create_staff", "list_wards", "create_ward"):
+        monkeypatch.setattr(staff, name, broken)
+
+    assert client.get("/api/admin/staff", headers=headers).status_code == 503
+    assert client.get("/api/admin/wards", headers=headers).status_code == 503
+    assert client.post("/api/admin/wards", json={"name": "Ward Z"}, headers=headers).status_code == 503
+    assert client.post("/api/admin/staff", headers=headers, json={
+        "username": "sam.lee", "name": "Sam", "password": "violet otter canoe", "role": "Admin",
+    }).status_code == 503
