@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import staff
 
 
 def run():
+    os.environ["CARESIGHT_EMAIL_ENABLED"] = "false"
     with tempfile.TemporaryDirectory(prefix="caresight-browser-") as directory:
         root = Path(directory)
         escalations.ESCALATIONS_FILE = str(root / "escalations.json")

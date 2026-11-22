@@ -10,6 +10,7 @@ flowchart TD
     PAT["patients.py<br/>patient records, wards"]
     OBS["observations.py<br/>Observation fields, validation, storage<br/>(also a command-line entry tool)"]
     ESC["escalations.py<br/>create + list escalations"]
+    EMAIL["notifications.py<br/>verified STARTTLS email<br/>best-effort background delivery"]
     subgraph SCORING["scoring/ package (pure functions, no I/O)"]
         NEWS["news2.py<br/>score_observation()"]
         SCORERS["scorers.py<br/>7 parameter scorers<br/>(common interface)"]
@@ -24,6 +25,7 @@ flowchart TD
     API --> OBS
     API --> NEWS
     API --> ESC
+    API -. "new escalation only" .-> EMAIL
     PAT --> STORE
     OBS --> STORE
     ESC --> STORE
@@ -42,6 +44,7 @@ flowchart TD
 | `auth.py` | Sessions (random tokens stored as hashes, 8-hour expiry), password hashing and the shared `require_role` dependency | US-01 |
 | `patients.py` | Patient records (ID, name, ward, bed), validation, duplicate ID and occupied-bed checks, ward list, safe JSON storage | US-02 |
 | `escalations.py` | Turns a scoring result that requires escalation into an Open escalation record; lists escalations by risk level then oldest first; safe JSON storage | US-07 |
+| `notifications.py` | Reads email environment settings at runtime and sends an escalation summary through Gmail STARTTLS; never sends inline with the observation response | US-07 |
 | `main.py` | HTTP routes protected by the shared `auth.py` session and role dependencies, turns validation errors into `422` responses that name the bad fields | US-01, US-02, US-03, US-07 |
 | `observations.py` | Defines the seven fields and their valid ranges, validates a whole observation, saves and loads observations safely (atomic write, corrupt-file backup) | US-03 |
 | `scoring/scorers.py` | One scorer class per parameter, all implementing `ParameterScorer.score(value)` | US-04 |
@@ -56,8 +59,9 @@ flowchart TD
 3. Otherwise the observation is stamped with the time and saved by `observations.save_observation()`.
 4. `scoring.score_observation()` returns sub-scores, total, risk level, frequency, next-due time and escalation flag.
 5. `escalations.create_escalation_if_required()` reads the escalation decision from the score. If it is required, an Open escalation is saved with patient, score, risk level and required response.
-6. The response returns the saved observation, the score and the escalation (or `null`); the UI renders the breakdown table and an alert if an escalation was raised.
-7. Clinicians see open escalations through `GET /api/escalations` (Clinician role only), sorted by risk level, then oldest first.
+6. Only after an escalation is saved, FastAPI schedules `notifications.send_escalation_notification()` as an in-process background task. The sender reads environment configuration at delivery time and uses verified STARTTLS; invalid configuration or delivery failure does not undo the saved records.
+7. The response returns the saved observation, the score and the escalation (or `null`); the UI renders the breakdown table and an alert if an escalation was raised.
+8. Clinicians see open escalations through `GET /api/escalations` (Clinician role only), sorted by risk level, then oldest first. Listing and history requests never schedule email.
 
 ## Main design decisions
 
@@ -78,4 +82,5 @@ flowchart TD
 - Sessions are in memory and require a single server worker. Restarting clears sessions. See [AUTH.md](AUTH.md).
 - Staff are not assigned to wards yet, so the ward list is filtered by choice rather than by the nurse's own ward (moves to US-12).
 - Escalations can be listed but not yet acknowledged (US-08).
+- Email delivery is disabled by default and best-effort only: in-process background tasks are not durable and are not automatically retried. See the US-07 instructions in `README.md`.
 - Staff provisioning is planned under US-12. Patient self-registration has been removed.

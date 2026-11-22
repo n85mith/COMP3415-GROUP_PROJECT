@@ -10,7 +10,7 @@
 | Integration | Login, recording an observation through the HTTP API, validation failures, scored history | FastAPI `TestClient` against the real app | `tests/test_api.py` |
 | Integration | Sessions and role checks: missing, invalid, expired and revoked tokens, wrong roles, storage unchanged on refusal | FastAPI `TestClient` | `tests/test_auth.py`, `tests/test_access.py` |
 | Unit + integration | Patient records: required fields, duplicate IDs, occupied beds, ward filter, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
-| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing | `pytest`, `TestClient` | `tests/test_escalations.py` |
+| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing, best-effort email notification using mocked SMTP | `pytest`, `TestClient` | `tests/test_escalations.py`, `tests/test_notifications.py` |
 
 The scoring tests are the most thorough because NFR-01 requires the scoring engine to pass 100% of the boundary cases. Each test uses an isolated temporary storage file so tests never touch real data and can run in any order.
 
@@ -53,6 +53,7 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 | **US-07** Below all thresholds: no escalation | `escalations.create_escalation_if_required` | `test_escalations.py::test_low_score_creates_no_escalation`, `test_low_score_above_zero_creates_no_escalation`, `test_normal_observation_via_api_has_no_escalation` |
 | **US-07** Open escalations listed by risk level, then oldest first | `escalations.list_escalations` | `test_escalations.py::test_list_puts_highest_risk_first`, `test_same_risk_level_is_listed_oldest_first`, `test_higher_score_does_not_jump_ahead_within_a_risk_level` |
 | **US-07 / FR-09** Escalations are routed to clinicians only | `GET /api/escalations` with `require_role("Clinician")` | `test_escalations.py::test_only_clinicians_can_list_escalations` |
+| **US-07** A newly persisted escalation schedules one sanitized, verified-TLS email notification; no escalation means no notification | `main.py` background task, `notifications.py` runtime configuration and SMTP sender | `tests/test_notifications.py` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested

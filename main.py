@@ -3,13 +3,14 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import auth as auth_module
 import escalations
+import notifications
 import observations
 import patients
 import staff
@@ -98,6 +99,7 @@ def logout(
 @app.post("/api/observations")
 def record_observation(
     data: ObservationRequest,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_role("Nurse", "Clinician")),
 ):
     values = data.model_dump()
@@ -124,6 +126,11 @@ def record_observation(
     observations.save_observation(observation)
     score = score_observation(observation)
     escalation = escalations.create_escalation_if_required(observation, score)
+    if escalation is not None:
+        background_tasks.add_task(
+            notifications.send_escalation_notification,
+            escalation,
+        )
 
     return {"observation": observation, "score": score, "escalation": escalation}
 
