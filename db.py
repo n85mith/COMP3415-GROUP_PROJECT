@@ -52,6 +52,24 @@ CREATE TABLE IF NOT EXISTS escalations (
     response_note TEXT
 );
 CREATE INDEX IF NOT EXISTS escalations_status ON escalations (status, created_at);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    username TEXT,
+    action TEXT NOT NULL,
+    target TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at);
 """
 
 LEGACY_FILES = ("patients.json", "observations.json", "escalations.json")

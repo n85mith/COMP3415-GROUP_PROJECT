@@ -4,6 +4,7 @@ import pytest
 
 import auth
 import db
+import security
 from fastapi.testclient import TestClient
 
 import patients
@@ -53,7 +54,7 @@ def valid_request(existing_patient, normal_values):
 
 @pytest.fixture(autouse=True)
 def isolated_auth(monkeypatch):
-    monkeypatch.setattr(auth, "_sessions", {})
+    security.login_throttle.reset()
     monkeypatch.setattr(auth, "USERS", deepcopy(auth.USERS))
     monkeypatch.setattr("main.USERS", auth.USERS)
 

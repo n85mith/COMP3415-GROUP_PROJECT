@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 
 import auth
+import security
 from auth import ROLES, hash_password
 
 STAFF_FILE = Path(__file__).with_name("staff.json")
@@ -161,10 +162,9 @@ def create_staff(username, name, password, role, ward=None):
             "Role must be Nurse, Clinician or Admin."
         )
 
-    if not isinstance(password, str) or not 12 <= len(password) <= 128:
-        raise StaffValidationError(
-            "Password must contain 12-128 characters."
-        )
+    problems = security.password_problems(password, username)
+    if problems:
+        raise StaffValidationError(" ".join(problems))
 
     if ward is not None:
         ward = _text(ward, "Ward", 80)

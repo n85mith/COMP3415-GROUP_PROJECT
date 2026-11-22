@@ -88,4 +88,4 @@ def test_unsupported_role_cannot_login(client, monkeypatch):
     monkeypatch.setitem(auth.USERS["nurse"], "role", "Patient")
     response = client.post("/api/login", json={"username": "nurse", "password": "password123"})
     assert response.status_code == 401
-    assert auth._sessions == {}
+    assert auth.count_sessions() == 0

@@ -436,7 +436,7 @@
                     <input type="text" id="staff-name" autocomplete="name" required />
                     <label for="staff-password">Initial password</label>
                     <input type="password" id="staff-password" autocomplete="new-password" required />
-                    <p class="muted">Password must contain 12-128 characters.</p>
+                    <p class="muted">12-128 characters. Must not contain the username or be a common password.</p>
                     <label for="staff-role">Role</label>
                     <select id="staff-role" required>
                         <option value="">Select a role...</option>
@@ -457,6 +457,14 @@
                     <button id="admin-ward-submit" type="submit">Create Ward</button>
                 </form>
             </div>
+            <section aria-labelledby="audit-heading">
+                <div class="section-head">
+                    <h3 id="audit-heading">Audit log</h3>
+                    <button id="audit-refresh" type="button" class="secondary">Refresh audit log</button>
+                </div>
+                <p class="muted">The 50 most recent actions, newest first.</p>
+                <div id="audit-list" role="region" aria-label="Audit log" tabindex="0" style="overflow-x: auto;"></div>
+            </section>
         </section>
 
         <div id="esc-section" style="display: none;">
@@ -797,7 +805,44 @@
             staffList.replaceChildren();
             wardListManaged.replaceChildren();
             staffWard.replaceChildren(new Option('No ward', ''));
+            document.getElementById('audit-list').replaceChildren();
         }
+
+        const AUDIT_LABELS = {
+            login: 'Signed in', login_failed: 'Failed sign-in', login_locked: 'Account locked', logout: 'Signed out',
+            patient_created: 'Patient added', patient_updated: 'Patient updated',
+            observation_recorded: 'Observation recorded', escalation_created: 'Escalation raised',
+            escalation_acknowledged: 'Escalation acknowledged', staff_created: 'Staff account created',
+            ward_created: 'Ward created'
+        };
+
+        async function refreshAudit() {
+            const list = document.getElementById('audit-list');
+            const res = await apiFetch('/api/admin/audit?limit=50');
+            if (!res.ok) {
+                list.innerHTML = '<p class="muted">Unable to load the audit log.</p>';
+                return;
+            }
+            const entries = await res.json();
+            if (!entries.length) {
+                list.innerHTML = '<p class="muted">No actions recorded yet.</p>';
+                return;
+            }
+            const rows = entries.map(entry => {
+                const when = new Date(entry.at).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' });
+                const details = Object.entries(entry.details || {})
+                    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('; ');
+                return `<tr><td>${escapeHtml(when)}</td><td>${escapeHtml(entry.username || '—')}</td>
+                    <td>${escapeHtml(AUDIT_LABELS[entry.action] || entry.action)}</td>
+                    <td>${escapeHtml(entry.target || '—')}</td><td>${escapeHtml(details || '—')}</td></tr>`;
+            }).join('');
+            list.innerHTML = `<table class="breakdown" aria-label="Audit log entries">
+                <thead><tr><th scope="col">When</th><th scope="col">User</th><th scope="col">Action</th>
+                <th scope="col">Target</th><th scope="col">Details</th></tr></thead>
+                <tbody>${rows}</tbody></table>`;
+        }
+
+        document.getElementById('audit-refresh').addEventListener('click', () => refreshAudit().catch(() => {}));
 
         function readApiError(data, fallback) {
             return typeof data.detail === 'string' ? data.detail : fallback;
@@ -869,6 +914,7 @@
                 const wardRows = await wardResponse.json();
                 renderStaff(staffRows);
                 renderManagedWards(wardRows);
+                refreshAudit().catch(() => {});
                 staffWard.replaceChildren(
                     new Option('No ward', ''),
                     ...wardRows.map(ward => new Option(ward, ward)),

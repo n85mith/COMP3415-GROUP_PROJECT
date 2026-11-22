@@ -158,3 +158,33 @@ test('patient text is shown as text, never run as markup or script', async ({ pa
   await expect(page.locator('#ack-target-info')).toContainText(`for patient ${id}`);
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
 });
+
+test('admin sees recent actions in the audit log', async ({ page, request }) => {
+  await seed(request, { patient_id: 'P-801', name: 'Synthetic Audit', ward: 'Ward A', bed: '08' });
+  await signIn(page, 'admin');
+  const log = page.getByRole('table', { name: 'Audit log entries' });
+  await expect(log.getByRole('row', { name: /Patient added P-801/ })).toBeVisible();
+  await expect(log.getByRole('row', { name: /admin Signed in/ }).first()).toBeVisible();
+});
+
+test('the page runs under its Content-Security-Policy without violations', async ({ page, request }) => {
+  const violations = [];
+  page.on('console', message => {
+    if (/Content Security Policy|Refused to/i.test(message.text())) violations.push(message.text());
+  });
+  await seed(request, { patient_id: 'P-901', name: 'Synthetic CSP', ward: 'Ward C', bed: '09' }, {}, { pulse: 95 });
+  await page.reload();
+  const response = await page.goto('/');
+  expect(response.headers()['content-security-policy']).toContain("script-src 'sha256-");
+
+  await signIn(page);
+  await page.getByRole('button', { name: 'Show score trend for P-901' }).click();
+  await expect(page.getByRole('img', { name: /NEWS2 scores over time/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Sign Out' }).click();
+  await signIn(page, 'clinician');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Escalations' }).click();
+  await signOut(page);
+  await signIn(page, 'admin');
+  await expect(page.getByRole('table', { name: 'Audit log entries' })).toBeVisible();
+  expect(violations).toEqual([]);
+});
