@@ -1,13 +1,8 @@
-import json
-import os
 from datetime import datetime
 
+import db
+import patients
 from scoring import score_observation
-
-
-OBSERVATIONS_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "observations.json"
-)
 
 
 OBSERVATION_FIELDS = [
@@ -123,7 +118,12 @@ def collect_observation():
 
     observation = {}
 
-    observation["patient_id"] = get_required_text("Enter patient ID: ")
+    while True:
+        patient_id = patients.normalize_patient_id(get_required_text("Enter patient ID: "))
+        if patients.patient_exists(patient_id):
+            break
+        print("Unknown patient ID. Create the patient in the web app first.")
+    observation["patient_id"] = patient_id
     observation["recorded_by"] = get_required_text("Enter your staff username: ")
     observation["recorded_at"] = datetime.now().isoformat()
 
@@ -133,54 +133,48 @@ def collect_observation():
     return observation
 
 
+def _from_row(row):
+    observation = dict(row)
+    observation["supplemental_oxygen"] = bool(observation["supplemental_oxygen"])
+    return observation
+
+
 def load_observations():
-
-    if not os.path.exists(OBSERVATIONS_FILE):
-        return []
-
-    with open(OBSERVATIONS_FILE, "r") as file:
-        try:
-            observations = json.load(file)
-        except json.JSONDecodeError:
-            observations = None
-
-    if isinstance(observations, list):
-        return observations
-
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_file = OBSERVATIONS_FILE.replace(".json", f".corrupt-{timestamp}.json")
-    os.replace(OBSERVATIONS_FILE, backup_file)
-    print(f"\nWarning: {OBSERVATIONS_FILE} could not be read.")
-    print(f"It was moved to {backup_file} and a new file was started.")
-
-    return []
+    with db.transaction() as conn:
+        return [_from_row(r) for r in conn.execute("SELECT * FROM observations ORDER BY id")]
 
 
 def save_observation(observation):
+    observation.setdefault("recorded_at", datetime.now().isoformat())
+    columns = ["patient_id", "recorded_by", "recorded_at"] + [field["id"] for field in OBSERVATION_FIELDS]
+    values = [observation[c] for c in columns]
+    values[columns.index("supplemental_oxygen")] = int(bool(observation["supplemental_oxygen"]))
 
-    observations = load_observations()
-    observations.append(observation)
-
-    temp_file = OBSERVATIONS_FILE + ".tmp"
-
-    with open(temp_file, "w") as file:
-        json.dump(observations, file, indent=4)
-
-    os.replace(temp_file, OBSERVATIONS_FILE)
+    with db.transaction(write=True) as conn:
+        cursor = conn.execute(
+            f"INSERT INTO observations ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+            values,
+        )
+        observation["id"] = cursor.lastrowid
 
     return observation
 
 
 def get_observations_for_patient(patient_id):
+    with db.transaction() as conn:
+        rows = conn.execute(
+            "SELECT * FROM observations WHERE patient_id = ? ORDER BY recorded_at, id", (patient_id,)
+        )
+        return [_from_row(r) for r in rows]
 
-    observations = load_observations()
-    patient_observations = []
 
-    for observation in observations:
-        if observation["patient_id"] == patient_id:
-            patient_observations.append(observation)
-
-    return patient_observations
+def get_latest_observation(patient_id):
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT * FROM observations WHERE patient_id = ? ORDER BY recorded_at DESC, id DESC LIMIT 1",
+            (patient_id,),
+        ).fetchone()
+    return _from_row(row) if row else None
 
 
 def validate_observation_values(values):
@@ -263,7 +257,7 @@ def main():
         return
 
     save_observation(observation)
-    print(f"\nSaved to {OBSERVATIONS_FILE}")
+    print(f"\nSaved to {db.DB_FILE}")
 
     score_result = score_observation(observation)
     display_observation(observation, score_result)

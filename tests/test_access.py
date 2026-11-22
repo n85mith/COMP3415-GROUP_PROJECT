@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import pytest
 
@@ -30,10 +29,9 @@ def test_clinical_roles_can_save_and_read(client, valid_request, username):
 @pytest.mark.parametrize("credential", ["missing", "invalid", "admin", "expired", "revoked"])
 @pytest.mark.parametrize("existing_data", [False, True])
 def test_denied_requests_do_not_change_storage(client, valid_request, monkeypatch, credential, existing_data):
-    path = Path(observations.OBSERVATIONS_FILE)
     if existing_data:
         assert client.post("/api/observations", json=valid_request, headers=login(client, "nurse")).status_code == 200
-    before = path.read_bytes() if path.exists() else None
+    before = observations.load_observations()
     if credential == "missing":
         headers = {}
     elif credential == "invalid":
@@ -49,14 +47,14 @@ def test_denied_requests_do_not_change_storage(client, valid_request, monkeypatc
     expected = 403 if credential == "admin" else 401
     assert client.post("/api/observations", json=valid_request, headers=headers).status_code == expected
     assert client.get("/api/patients/P-001/observations", headers=headers).status_code == expected
-    assert (path.read_bytes() if path.exists() else None) == before
+    assert observations.load_observations() == before
 
 
 def test_role_changes_apply_to_existing_sessions(client, valid_request, monkeypatch):
     headers = login(client, "nurse")
     monkeypatch.setitem(auth.USERS["nurse"], "role", "Admin")
     assert client.post("/api/observations", json=valid_request, headers=headers).status_code == 403
-    assert not Path(observations.OBSERVATIONS_FILE).exists()
+    assert observations.load_observations() == []
 
 
 def test_removed_account_cannot_use_existing_session(client, monkeypatch):

@@ -3,19 +3,16 @@ from copy import deepcopy
 import pytest
 
 import auth
-import escalations
+import db
 from fastapi.testclient import TestClient
 
-import observations
 import patients
 from main import app
 
 
 @pytest.fixture(autouse=True)
-def isolated_data_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(observations, "OBSERVATIONS_FILE", str(tmp_path / "observations.json"))
-    monkeypatch.setattr(patients, "PATIENTS_FILE", str(tmp_path / "patients.json"))
-    monkeypatch.setattr(escalations, "ESCALATIONS_FILE", str(tmp_path / "escalations.json"))
+def isolated_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_FILE", str(tmp_path / "caresight.db"))
 
 
 @pytest.fixture

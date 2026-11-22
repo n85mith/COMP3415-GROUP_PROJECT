@@ -27,16 +27,19 @@ def test_missing_fields_are_reported():
     assert set(errors) == {"name", "ward", "bed"}
 
 
-def test_corrupt_patients_file_is_kept_not_overwritten(tmp_path, patient_data):
+def test_corrupt_legacy_patients_file_is_kept_not_overwritten(tmp_path, patient_data):
     path = tmp_path / "patients.json"
     path.write_text("not json")
 
     patients.create_patient(dict(patient_data))
 
-    backups = list(tmp_path.glob("patients.corrupt-*.json"))
-    assert len(backups) == 1
-    assert backups[0].read_text() == "not json"
-    assert len(json.loads(path.read_text())) == 1
+    assert path.read_text() == "not json"
+    assert len(patients.load_patients()) == 1
+
+
+def test_legacy_patients_json_is_imported(tmp_path, patient_data):
+    (tmp_path / "patients.json").write_text(json.dumps([patient_data]))
+    assert patients.get_patient("P-001") == patient_data
 
 
 @pytest.mark.parametrize("username", ["nurse", "clinician"])
@@ -142,3 +145,72 @@ def test_ward_list_shows_latest_score_and_risk(staff_client, existing_patient, p
     assert rows["P-001"]["last_observed_at"]
     assert rows["P-002"]["total_score"] is None
     assert rows["P-002"]["risk_level"] is None
+
+
+def test_get_single_patient(staff_client, existing_patient, patient_data):
+    assert staff_client.get("/api/patients/p-001").json() == patient_data
+    assert staff_client.get("/api/patients/P-404").status_code == 404
+
+
+def test_patch_updates_name_ward_and_bed(staff_client, existing_patient):
+    res = staff_client.patch("/api/patients/p-001", json={"name": " New Name ", "ward": "Ward B", "bed": "7"})
+
+    assert res.status_code == 200
+    assert res.json() == {"patient_id": "P-001", "name": "New Name", "ward": "Ward B", "bed": "7"}
+    assert patients.get_patient("P-001")["ward"] == "Ward B"
+
+
+def test_patch_can_change_one_field_only(staff_client, existing_patient, patient_data):
+    res = staff_client.patch("/api/patients/P-001", json={"bed": "2"})
+    assert res.json() == {**patient_data, "bed": "2"}
+
+
+def test_patch_keeping_own_bed_is_not_a_conflict(staff_client, existing_patient):
+    res = staff_client.patch("/api/patients/P-001", json={"name": "Renamed", "ward": "ward a", "bed": "1"})
+    assert res.status_code == 200
+
+
+def test_patch_into_occupied_bed_is_rejected(staff_client, existing_patient, patient_data):
+    patients.create_patient({**patient_data, "patient_id": "P-002", "bed": "2"})
+
+    res = staff_client.patch("/api/patients/P-002", json={"bed": "1"})
+
+    assert res.status_code == 409
+    assert "bed" in res.json()["errors"]
+    assert patients.get_patient("P-002")["bed"] == "2"
+
+
+@pytest.mark.parametrize("body, field", [({"name": " "}, "name"), ({}, "name"), ({"bed": "x" * 21}, "bed")])
+def test_patch_with_invalid_values_changes_nothing(staff_client, existing_patient, patient_data, body, field):
+    res = staff_client.patch("/api/patients/P-001", json=body)
+
+    assert res.status_code == 422
+    assert field in res.json()["errors"]
+    assert patients.get_patient("P-001") == patient_data
+
+
+def test_patch_unknown_patient_is_404(staff_client):
+    assert staff_client.patch("/api/patients/P-404", json={"name": "Nobody"}).status_code == 404
+
+
+@pytest.mark.parametrize("credential, expected", [("missing", 401), ("admin", 403)])
+def test_patient_detail_and_update_need_a_staff_session(client, existing_patient, patient_data, credential, expected):
+    headers = login(client, "admin") if credential == "admin" else {}
+
+    assert client.get("/api/patients/P-001", headers=headers).status_code == expected
+    assert client.patch("/api/patients/P-001", json={"name": "X"}, headers=headers).status_code == expected
+    assert patients.get_patient("P-001") == patient_data
+
+
+def test_overlong_fields_are_rejected(staff_client, patient_data):
+    res = staff_client.post("/api/patients", json={**patient_data, "name": "x" * 101})
+    assert res.status_code == 422
+    assert "name" in res.json()["errors"]
+
+
+def test_ward_list_counts_open_escalations(staff_client, existing_patient, normal_values):
+    staff_client.post("/api/observations", json={"patient_id": "P-001", **normal_values, "consciousness": "C"})
+    staff_client.post("/api/observations", json={"patient_id": "P-001", **normal_values, "consciousness": "V"})
+
+    [row] = staff_client.get("/api/ward-list").json()
+    assert row["open_escalations"] == 2
