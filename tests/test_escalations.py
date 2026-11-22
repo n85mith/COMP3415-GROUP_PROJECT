@@ -1,8 +1,11 @@
 import json
+import sqlite3
+from contextlib import closing
 from datetime import datetime
 
 import pytest
 
+import db
 import escalations
 from scoring import score_observation
 
@@ -52,10 +55,11 @@ def test_medium_score_creates_open_escalation_with_details(normal_values):
     assert escalations.list_escalations() == [escalation]
 
 
-def test_escalation_is_persisted_to_file(normal_values):
-    raise_for(make_observation(normal_values, consciousness="U"))
-    with open(escalations.ESCALATIONS_FILE) as file:
-        assert len(json.load(file)) == 1
+def test_escalation_is_persisted_to_database(normal_values):
+    created = raise_for(make_observation(normal_values, consciousness="U"))
+    with closing(sqlite3.connect(db.DB_FILE)) as conn:
+        assert conn.execute("SELECT id FROM escalations").fetchall() == [(created["id"],)]
+    assert escalations.get_escalation(created["id"]) == created
 
 
 def test_each_qualifying_observation_creates_its_own_escalation(normal_values):
@@ -112,12 +116,16 @@ def test_higher_score_does_not_jump_ahead_within_a_risk_level(normal_values, mon
     assert [e["patient_id"] for e in escalations.list_escalations()] == ["P-EARLY", "P-LATE"]
 
 
-def test_corrupt_file_is_backed_up_not_lost(tmp_path, normal_values):
-    with open(escalations.ESCALATIONS_FILE, "w") as file:
-        file.write("{not json")
+def test_legacy_escalations_json_is_imported(tmp_path, normal_values):
+    legacy = {"id": "old1", "patient_id": "P-001", "status": "Open", "created_at": "2026-11-01T08:00:00",
+              "observation_recorded_at": "2026-11-01T08:00:00", "recorded_by": "nurse", "total_score": 3,
+              "risk_level": "Low-medium", "parameters_scoring_three": ["consciousness"],
+              "clinical_response": "Urgent review"}
+    (tmp_path / "escalations.json").write_text(json.dumps([legacy]))
 
-    assert escalations.load_escalations() == []
-    assert list(tmp_path.glob("escalations.corrupt-*.json"))
+    [imported] = escalations.load_escalations()
+    assert imported["id"] == "old1"
+    assert imported["parameters_scoring_three"] == ["consciousness"]
 
 
 def auth_headers(client, username):

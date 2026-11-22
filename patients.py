@@ -1,12 +1,8 @@
-import json
-import os
-from datetime import datetime
-
-PATIENTS_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "patients.json"
-)
+import db
 
 PATIENT_FIELDS = ["patient_id", "name", "ward", "bed"]
+EDITABLE_FIELDS = ["name", "ward", "bed"]
+MAX_LENGTH = {"patient_id": 32, "name": 100, "ward": 50, "bed": 20}
 
 
 class DuplicatePatientError(Exception):
@@ -20,50 +16,62 @@ def normalize_patient_id(patient_id):
     return str(patient_id or "").strip().upper()
 
 
+def _check_field(field, value):
+    if not isinstance(value, str) or not value.strip():
+        return "This field is required."
+    if len(value.strip()) > MAX_LENGTH[field]:
+        return f"Must be at most {MAX_LENGTH[field]} characters."
+    return None
+
+
 def validate_patient(values):
     errors = {}
     for field in PATIENT_FIELDS:
-        value = values.get(field)
-        if not isinstance(value, str) or not value.strip():
-            errors[field] = "This field is required."
+        message = _check_field(field, values.get(field))
+        if message:
+            errors[field] = message
     return errors
 
 
+def validate_patient_update(values):
+    errors = {}
+    provided = {field: values[field] for field in EDITABLE_FIELDS if values.get(field) is not None}
+    if not provided:
+        return {"name": "Provide at least one of name, ward or bed."}
+    for field, value in provided.items():
+        message = _check_field(field, value)
+        if message:
+            errors[field] = message
+    return errors
+
+
+def _row(row):
+    return dict(row) if row is not None else None
+
+
 def load_patients():
-    if not os.path.exists(PATIENTS_FILE):
-        return []
-    with open(PATIENTS_FILE, "r") as file:
-        try:
-            patients = json.load(file)
-        except json.JSONDecodeError:
-            patients = None
-    if isinstance(patients, list):
-        return patients
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_file = PATIENTS_FILE.replace(".json", f".corrupt-{timestamp}.json")
-    os.replace(PATIENTS_FILE, backup_file)
-    print(f"\nWarning: {PATIENTS_FILE} could not be read.")
-    print(f"It was moved to {backup_file} and a new file was started.")
-    return []
-
-
-def _write_patients(patients):
-    temp_file = PATIENTS_FILE + ".tmp"
-    with open(temp_file, "w") as file:
-        json.dump(patients, file, indent=4)
-    os.replace(temp_file, PATIENTS_FILE)
+    with db.transaction() as conn:
+        return [_row(r) for r in conn.execute("SELECT * FROM patients ORDER BY rowid")]
 
 
 def get_patient(patient_id):
-    key = normalize_patient_id(patient_id)
-    for patient in load_patients():
-        if patient["patient_id"] == key:
-            return patient
-    return None
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT * FROM patients WHERE patient_id = ?", (normalize_patient_id(patient_id),)
+        ).fetchone()
+    return _row(row)
 
 
 def patient_exists(patient_id):
     return get_patient(patient_id) is not None
+
+
+def _bed_taken(conn, ward, bed, except_id=None):
+    return conn.execute(
+        "SELECT patient_id FROM patients WHERE lower(ward) = lower(?) AND lower(bed) = lower(?)"
+        " AND patient_id IS NOT ?",
+        (ward, bed, except_id),
+    ).fetchone()
 
 
 def create_patient(values):
@@ -73,31 +81,59 @@ def create_patient(values):
         "ward": values["ward"].strip(),
         "bed": values["bed"].strip(),
     }
-    patients = load_patients()
-    for existing in patients:
-        if existing["patient_id"] == patient["patient_id"]:
+    with db.transaction(write=True) as conn:
+        if conn.execute("SELECT 1 FROM patients WHERE patient_id = ?", (patient["patient_id"],)).fetchone():
+            raise DuplicatePatientError("patient_id", f"Patient ID {patient['patient_id']} already exists.")
+        occupant = _bed_taken(conn, patient["ward"], patient["bed"])
+        if occupant:
             raise DuplicatePatientError(
-                "patient_id",
-                f"Patient ID {patient['patient_id']} already exists."
+                "bed", f"Bed {patient['bed']} on {patient['ward']} is already taken by {occupant['patient_id']}."
             )
-        same_ward = existing["ward"].lower() == patient["ward"].lower()
-        if same_ward and existing["bed"].lower() == patient["bed"].lower():
-            raise DuplicatePatientError(
-                "bed",
-                f"Bed {patient['bed']} on {patient['ward']} is already "
-                f"taken by {existing['patient_id']}."
-            )
-    patients.append(patient)
-    _write_patients(patients)
+        conn.execute(
+            "INSERT INTO patients (patient_id, name, ward, bed) VALUES (:patient_id, :name, :ward, :bed)", patient
+        )
     return patient
 
 
+def update_patient(patient_id, values):
+    key = normalize_patient_id(patient_id)
+    with db.transaction(write=True) as conn:
+        current = _row(conn.execute("SELECT * FROM patients WHERE patient_id = ?", (key,)).fetchone())
+        if current is None:
+            return None
+        for field in EDITABLE_FIELDS:
+            if values.get(field) is not None:
+                current[field] = values[field].strip()
+        occupant = _bed_taken(conn, current["ward"], current["bed"], except_id=key)
+        if occupant:
+            raise DuplicatePatientError(
+                "bed", f"Bed {current['bed']} on {current['ward']} is already taken by {occupant['patient_id']}."
+            )
+        conn.execute(
+            "UPDATE patients SET name = :name, ward = :ward, bed = :bed WHERE patient_id = :patient_id", current
+        )
+        conn.execute(
+            "UPDATE escalations SET ward = ? WHERE patient_id = ? AND status = 'Open'", (current["ward"], key)
+        )
+    return current
+
+
 def list_patients(ward=None):
-    patients = load_patients()
-    if ward:
-        patients = [p for p in patients if p["ward"].lower() == ward.strip().lower()]
-    return sorted(patients, key=lambda p: (p["ward"].lower(), p["bed"].lower(), p["patient_id"]))
+    query = "SELECT * FROM patients"
+    params = ()
+    if ward and ward.strip():
+        query += " WHERE lower(ward) = lower(?)"
+        params = (ward.strip(),)
+    query += " ORDER BY lower(ward), lower(bed), patient_id"
+    with db.transaction() as conn:
+        return [_row(r) for r in conn.execute(query, params)]
 
 
 def list_wards():
-    return sorted({p["ward"] for p in load_patients()}, key=str.lower)
+    with db.transaction() as conn:
+        rows = conn.execute("SELECT DISTINCT ward FROM patients").fetchall()
+    wards = {r["ward"] for r in rows}
+    import staff
+
+    wards.update(staff.list_wards())
+    return sorted(wards, key=str.lower)

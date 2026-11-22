@@ -3,12 +3,12 @@ import hmac
 import os
 import secrets
 import time
-from dataclasses import dataclass
-from threading import Lock
 from typing import Optional
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+import db
 
 ROLES = frozenset({"Nurse", "Clinician", "Admin"})
 SESSION_TTL_SECONDS = 8 * 60 * 60
@@ -27,6 +27,13 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(expected, stored)
 
 
+_DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
+
+
+def burn_password_check(password: str) -> None:
+    verify_password(password if isinstance(password, str) else "", _DUMMY_HASH)
+
+
 USERS = {
     "clinician": {"password": hash_password("password123"), "role": "Clinician", "name": "Dr. Aris Thorne"},
     "admin": {"password": hash_password("password123"), "role": "Admin", "name": "Demo Administrator"},
@@ -34,36 +41,61 @@ USERS = {
 }
 
 
-@dataclass(frozen=True)
-class Session:
-    username: str
-    expires_at: float
-
-
-_sessions: dict[str, Session] = {}
-_session_lock = Lock()
-
-
 def _token_key(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 def create_session(username: str) -> str:
-    if username not in USERS or USERS[username]["role"] not in ROLES:
+    username = normalize_account_username(username)
+    user = get_account(username)
+    if user is None or user["role"] not in ROLES:
         raise ValueError("Cannot create a session for this user")
     token = secrets.token_urlsafe(32)
     now = time.time()
-    with _session_lock:
-        expired = [key for key, session in _sessions.items() if session.expires_at <= now]
-        for key in expired:
-            del _sessions[key]
-        _sessions[_token_key(token)] = Session(username, now + SESSION_TTL_SECONDS)
+    with db.transaction(write=True) as conn:
+        conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+        conn.execute(
+            "INSERT INTO sessions (token_hash, username, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (_token_key(token), username, now, now + SESSION_TTL_SECONDS),
+        )
     return token
 
 
 def revoke_session(token: str) -> None:
-    with _session_lock:
-        _sessions.pop(_token_key(token), None)
+    with db.transaction(write=True) as conn:
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_key(token),))
+
+
+def count_sessions() -> int:
+    with db.transaction() as conn:
+        return conn.execute("SELECT COUNT(*) FROM sessions WHERE expires_at > ?", (time.time(),)).fetchone()[0]
+
+
+def normalize_account_username(username: str) -> str:
+    return username.strip().lower() if isinstance(username, str) else ""
+
+
+def get_account(username: str) -> Optional[dict]:
+    key = normalize_account_username(username)
+    if not key:
+        return None
+
+    if key in USERS:
+        user = USERS[key]
+        return {
+            "username": key,
+            "name": user["name"],
+            "password": user["password"],
+            "role": user["role"],
+            "ward": user.get("ward"),
+        }
+
+    import staff
+
+    stored = staff.get_staff(key)
+    if stored is None:
+        return None
+    return {"username": key, **stored}
 
 
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict:
@@ -75,17 +107,23 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
     if credentials is None:
         raise unauthorized
     key = _token_key(credentials.credentials)
-    with _session_lock:
-        session = _sessions.get(key)
-        if session is None:
-            raise unauthorized
-        if session.expires_at <= time.time():
-            del _sessions[key]
-            raise unauthorized
-    user = USERS.get(session.username)
+    with db.transaction() as conn:
+        session = conn.execute("SELECT username, expires_at FROM sessions WHERE token_hash = ?", (key,)).fetchone()
+    if session is None:
+        raise unauthorized
+    if session["expires_at"] <= time.time():
+        with db.transaction(write=True) as conn:
+            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (key,))
+        raise unauthorized
+    user = get_account(session["username"])
     if user is None or user["role"] not in ROLES:
         raise unauthorized
-    return {"username": session.username, "name": user["name"], "role": user["role"]}
+    return {
+        "username": session["username"],
+        "name": user["name"],
+        "role": user["role"],
+        "ward": user.get("ward"),
+    }
 
 
 def require_role(*roles: str):
