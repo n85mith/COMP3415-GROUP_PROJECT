@@ -1,4 +1,4 @@
-# Architectural Design (updated for P3)
+# Architectural Design (updated for P4)
 
 ## Components
 
@@ -9,14 +9,15 @@ flowchart TD
     AUTH["auth.py<br/>sessions, require_role"]
     PAT["patients.py<br/>patient records, wards"]
     OBS["observations.py<br/>Observation fields, validation, storage<br/>(also a command-line entry tool)"]
-    ESC["escalations.py<br/>create + list escalations"]
+    ESC["escalations.py<br/>create, route, list,<br/>acknowledge escalations"]
     subgraph SCORING["scoring/ package (pure functions, no I/O)"]
         NEWS["news2.py<br/>score_observation()"]
         SCORERS["scorers.py<br/>7 parameter scorers<br/>(common interface)"]
         BANDS["bands.py<br/>NEWS2 thresholds"]
         RISK["risk.py<br/>risk level, frequency,<br/>escalation decision"]
     end
-    STORE[("observations.json, patients.json,<br/>escalations.json<br/>(database later)")]
+    DB["db.py<br/>connections, schema,<br/>one-time JSON import"]
+    STORE[("caresight.db (SQLite)<br/>patients, observations,<br/>escalations")]
 
     UI -- "HTTP / JSON + bearer token" --> API
     API --> AUTH
@@ -24,9 +25,10 @@ flowchart TD
     API --> OBS
     API --> NEWS
     API --> ESC
-    PAT --> STORE
-    OBS --> STORE
-    ESC --> STORE
+    PAT --> DB
+    OBS --> DB
+    ESC --> DB
+    DB --> STORE
     OBS -.->|CLI only| NEWS
     NEWS --> SCORERS
     NEWS --> RISK
@@ -40,8 +42,9 @@ flowchart TD
 | :--- | :--- | :--- |
 | `index.html` | Presents sign-in, the ward list and add-patient form, the observation form and score breakdown, an escalation alert on save, and the open-escalations list for clinicians; highlights invalid fields and parameters that scored 3 | US-01, US-02, US-03, US-06, US-07 |
 | `auth.py` | Sessions (random tokens stored as hashes, 8-hour expiry), password hashing and the shared `require_role` dependency | US-01 |
-| `patients.py` | Patient records (ID, name, ward, bed), validation, duplicate ID and occupied-bed checks, ward list, safe JSON storage | US-02 |
-| `escalations.py` | Turns a scoring result that requires escalation into an Open escalation record; lists escalations by risk level then oldest first; safe JSON storage | US-07 |
+| `db.py` | Opens SQLite connections, creates the schema, wraps work in transactions, imports old JSON data once | US-02, US-03, US-07, US-08 |
+| `patients.py` | Patient records (ID, name, ward, bed), validation, duplicate ID and occupied-bed checks on create and update, ward list | US-02 |
+| `escalations.py` | Turns a scoring result that requires escalation into an Open escalation, routed by risk level and tagged with the ward; lists by risk level then oldest first; acknowledges with a response note | US-07, US-08 |
 | `main.py` | HTTP routes protected by the shared `auth.py` session and role dependencies, turns validation errors into `422` responses that name the bad fields | US-01, US-02, US-03, US-07 |
 | `observations.py` | Defines the seven fields and their valid ranges, validates a whole observation, saves and loads observations safely (atomic write, corrupt-file backup) | US-03 |
 | `scoring/scorers.py` | One scorer class per parameter, all implementing `ParameterScorer.score(value)` | US-04 |
@@ -57,7 +60,8 @@ flowchart TD
 4. `scoring.score_observation()` returns sub-scores, total, risk level, frequency, next-due time and escalation flag.
 5. `escalations.create_escalation_if_required()` reads the escalation decision from the score. If it is required, an Open escalation is saved with patient, score, risk level and required response.
 6. The response returns the saved observation, the score and the escalation (or `null`); the UI renders the breakdown table and an alert if an escalation was raised.
-7. Clinicians see open escalations through `GET /api/escalations` (Clinician role only), sorted by risk level, then oldest first.
+7. Clinicians see open escalations through `GET /api/escalations` (Clinician role only), sorted by risk level, then oldest first, optionally for one ward.
+8. A clinician acknowledges one with `POST /api/escalations/{id}/acknowledge` and a response note. The status changes from Open to Acknowledged in a single write transaction, so a second acknowledgement gets `409`.
 
 ## Main design decisions
 
@@ -69,7 +73,9 @@ flowchart TD
 | **Scoring is separate from escalation routing** | `risk.py` only *decides* whether escalation is required. Creating and listing escalations is done by the separate `escalations.py` module, which only reads the scoring result, so escalation code never needs to change when scoring changes (NFR-04). |
 | **Scores are calculated on read, not stored with the observation** | The stored data stays the raw measurements; if a band is corrected, history is re-scored correctly. |
 | **FastAPI with a single static page** | Meets the Chrome/Firefox requirement (NFR-05) with the least tooling. Easy for all four members to run locally. |
-| **JSON file storage for now, behind each module's load/save functions** | Observations, patients and escalations each have their own file with atomic writes and corrupt-file backup. Those functions are the only storage access points, so the planned database move changes only them. |
+| **SQLite through the standard library** | Gives transactions, unique constraints (one patient per bed) and safe concurrent writes with no server to install, so every member can run it. The modules kept their public functions, so routes and the scoring code did not change. Moving to PostgreSQL later only changes `db.py` and the SQL in the three storage modules. |
+| **Routing is a table keyed by the risk level from `risk.py`** | Scoring still only decides *whether* to escalate; `escalations.ROUTES` decides *who*. Changing a team never touches scoring. |
+| **Acknowledge is a conditional update (`WHERE status = 'Open'`)** | Two clinicians cannot both acknowledge the same escalation, and the first response note is never overwritten. |
 | **One escalation per qualifying observation** | Matches the US-07 criterion ("when it is saved, an Open escalation is created") and lets each escalation be acknowledged on its own in US-08. |
 | **Salted PBKDF2 password hashes** | NFR-06 forbids storing passwords in plain text. |
 
@@ -77,5 +83,5 @@ flowchart TD
 
 - Sessions are in memory and require a single server worker. Restarting clears sessions. See [AUTH.md](AUTH.md).
 - Staff are not assigned to wards yet, so the ward list is filtered by choice rather than by the nurse's own ward (moves to US-12).
-- Escalations can be listed but not yet acknowledged (US-08).
+- Acknowledged is the final status; there is no separate Resolved step yet.
 - Staff provisioning is planned under US-12. Patient self-registration has been removed.

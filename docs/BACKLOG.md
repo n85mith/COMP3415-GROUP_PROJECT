@@ -1,17 +1,17 @@
-# Updated Product Backlog (P3)
+# Updated Product Backlog (P4)
 
-Status as of the end of the P3 iteration.
+Status during the P4 iteration. Rows for stories still in progress on other branches are updated when they are merged.
 
 | ID | User story | Priority | Points | P1 status | **Current status** | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | US-01 | Login and Role-Based Access | Blocker | 5 | To Do | **Done** | Expiring bearer sessions, shared role dependency, logout revocation and access-denial tests. Patient self-registration removed. |
-| US-02 | Manage Patient Records | Blocker | 3 | To Do | **Done (ward assignment partial)** | Create and list patients (ID, name, ward, bed); duplicate IDs and occupied beds rejected; missing fields highlighted; ward list with latest score and risk, filterable by ward. Observations only accepted for existing patients. Staff are not yet assigned to a ward, so a nurse filters by ward rather than seeing only their own ward; staff-to-ward assignment moves to US-12. |
+| US-02 | Manage Patient Records | Blocker | 3 | To Do | **Done (ward assignment partial)** | P4: patient detail and edit API (`GET`/`PATCH`), length limits, SQLite storage. Create and list patients (ID, name, ward, bed); duplicate IDs and occupied beds rejected; missing fields highlighted; ward list with latest score and risk, filterable by ward. Observations only accepted for existing patients. Staff are not yet assigned to a ward, so a nurse filters by ward rather than seeing only their own ward; staff-to-ward assignment moves to US-12. |
 | US-04 | NEWS2 Sub-Scores | Blocker | 5 | To Do | **Done** | All seven scorers and boundary tests. |
-| US-03 | Record Observations | Blocker | 5 | To Do | **Done (storage partial)** | Entry, validation, timestamp and recorder work via UI, API and CLI. Saves to a JSON file, not a database. |
+| US-03 | Record Observations | Blocker | 5 | To Do | **Done** | Entry, validation, timestamp and recorder work via UI, API and CLI. P4: stored in SQLite; old JSON data is imported once. |
 | US-05 | Aggregate Score, Risk Level and Observation Frequency | Critical | 5 | To Do | **Done** | Risk level, frequency, next-due time and escalation flag. |
 | US-06 | Score Breakdown | Critical | 2 | To Do | **Done** | Breakdown table in UI and API; parameters scoring 3 highlighted. |
-| US-07 | Escalation Alerts | Critical | 5 | To Do | **Done** | Every observation with a total of 5+ or any single 3 creates an Open escalation (patient, score, risk level, required response). Clinician-only escalation list, sorted by risk level then oldest first, with patient name, ward and bed. In-app alert on save. |
-| US-08 | Acknowledge and Respond to Escalation | Critical | 3 | To Do | **To Do** | US-07 and US-01 are in place; escalations already carry a status field ready for Acknowledged. Next iteration. |
+| US-07 | Escalation Alerts | Critical | 5 | To Do | **Done** | Every observation with a total of 5+ or any single 3 creates an Open escalation (patient, score, risk level, required response). Clinician-only escalation list, sorted by risk level then oldest first, with patient name, ward and bed. In-app alert on save. P4: routed by risk level (critical care outreach / ward doctor or acute care team / ward doctor) and tagged with the ward; ward filter. Email alerts in progress on `feature/us-07-email`. |
+| US-08 | Acknowledge and Respond to Escalation | Critical | 3 | To Do | **Backend done, UI in progress** | `POST /api/escalations/{id}/acknowledge` with a required response note; records who and when; acknowledged only once. UI on `clara-vorbereitung-P4`. |
 | US-09 | Overdue Observation Flags | Major | 3 | To Do | **To Do** | Next-due time is already calculated and the ward list (US-02) now exists, so this is unblocked. |
 | US-12 | Manage Staff, Roles and Wards | Major | 3 | To Do | **To Do** | Also takes over assigning staff to wards (from US-02). |
 | US-10 | Score Trend View | Major | 5 | To Do | **To Do** | History endpoint already returns scored observations. |

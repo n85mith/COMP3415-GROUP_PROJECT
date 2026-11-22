@@ -1,4 +1,4 @@
-# Testing Plan and Tests (updated for P3)
+# Testing Plan and Tests (updated for P4)
 
 ## Approach
 
@@ -6,21 +6,29 @@
 | :--- | :--- | :--- | :--- |
 | Unit | Every NEWS2 band edge for each of the seven parameters | `pytest` parametrized boundary-value tests taken from the RCP NEWS2 chart | `tests/test_scorers.py` |
 | Unit | Risk level, observation frequency and escalation decision for each total-score range, including "any single 3" | `pytest`, direct calls to `evaluate_result` and `score_observation` | `tests/test_news2.py` |
-| Unit | Observation validation and safe storage (missing, out-of-range and wrong-type values; corrupt file is backed up, never overwritten) | `pytest` with a temporary observations file per test | `tests/test_observations.py` |
+| Unit | Observation validation and storage (missing, out-of-range and wrong-type values; stored types preserved; history ordered; old JSON data imported once, unreadable JSON left untouched) | `pytest` with a temporary SQLite database per test | `tests/test_observations.py` |
 | Integration | Login, recording an observation through the HTTP API, validation failures, scored history | FastAPI `TestClient` against the real app | `tests/test_api.py` |
 | Integration | Sessions and role checks: missing, invalid, expired and revoked tokens, wrong roles, storage unchanged on refusal | FastAPI `TestClient` | `tests/test_auth.py`, `tests/test_access.py` |
-| Unit + integration | Patient records: required fields, duplicate IDs, occupied beds, ward filter, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
-| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing | `pytest`, `TestClient` | `tests/test_escalations.py` |
+| Unit + integration | Patient records: required fields and length limits, duplicate IDs, occupied beds, ward filter, single-patient view, partial and full updates, bed conflicts on update, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
+| Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing, persisted in the database | `pytest`, `TestClient` | `tests/test_escalations.py` |
+| Unit + integration | Routing and acknowledgement: route and urgency per risk level, ward filter, required response note, acknowledge once only (including 8 simultaneous attempts), role checks, open escalations follow a patient who changes ward | `pytest`, `TestClient`, threads | `tests/test_acknowledge.py` |
+| System (browser) | Sign-in and role navigation, patient create/edit, observation form by keyboard on a narrow screen | Playwright (Chromium) against a server with a temporary database | `browser_tests/workspace.spec.cjs` |
 
-The scoring tests are the most thorough because NFR-01 requires the scoring engine to pass 100% of the boundary cases. Each test uses an isolated temporary storage file so tests never touch real data and can run in any order.
+The scoring tests are the most thorough because NFR-01 requires the scoring engine to pass 100% of the boundary cases. Each test uses its own temporary SQLite database, so tests never touch real data and can run in any order.
 
-Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs both on every push and pull request.
+Run everything with `pytest -v`. Lint runs with `flake8 .`. Browser tests run with `npm run test:browser`. GitHub Actions runs lint and the backend tests, then the browser tests, on every push and pull request.
+
+### Regression policy
+
+All tests from P2 and P3 are kept. Five tests that read the old JSON files directly were rewritten to check the same behaviour against the database (storage unchanged on refused requests, escalation persisted, unreadable old data never overwritten). No test was deleted.
 
 ## Latest execution result
 
 ```
-164 passed (flake8: no problems)
+221 passed (flake8: no problems)
 ```
+
+Combined with the in-progress US-12 and US-07 email branch (`feature/us-07-email`) in a trial merge: 277 passed.
 
 (Run `pytest -v` to see each case. CI results are on the repository's Actions tab.)
 
@@ -53,11 +61,16 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. GitHub Actions runs 
 | **US-07** Below all thresholds: no escalation | `escalations.create_escalation_if_required` | `test_escalations.py::test_low_score_creates_no_escalation`, `test_low_score_above_zero_creates_no_escalation`, `test_normal_observation_via_api_has_no_escalation` |
 | **US-07** Open escalations listed by risk level, then oldest first | `escalations.list_escalations` | `test_escalations.py::test_list_puts_highest_risk_first`, `test_same_risk_level_is_listed_oldest_first`, `test_higher_score_does_not_jump_ahead_within_a_risk_level` |
 | **US-07 / FR-09** Escalations are routed to clinicians only | `GET /api/escalations` with `require_role("Clinician")` | `test_escalations.py::test_only_clinicians_can_list_escalations` |
+| **US-02** Patient details can be viewed and corrected; a bed that is already taken is rejected | `GET`/`PATCH /api/patients/{id}`, `patients.update_patient` | `test_patients.py::test_patch_updates_name_ward_and_bed`, `test_patch_into_occupied_bed_is_rejected`, `test_patch_with_invalid_values_changes_nothing` |
+| **US-07** Escalation is routed to the team that matches the risk level and to the patient's ward | `escalations.ROUTES`, `create_escalation_if_required(ward=...)` | `test_acknowledge.py::test_escalation_is_routed_by_risk_level`, `test_escalations_can_be_filtered_by_ward` |
+| **US-08** Clinician acknowledges with a response note; who and when are recorded; status becomes Acknowledged | `POST /api/escalations/{id}/acknowledge` | `test_acknowledge.py::test_clinician_acknowledges_with_a_response_note`, `test_acknowledged_escalation_leaves_the_open_list` |
+| **US-08** An escalation cannot be acknowledged twice, even by two clinicians at once | conditional update inside a write transaction | `test_acknowledge.py::test_escalation_cannot_be_acknowledged_twice`, `test_simultaneous_acknowledgements_only_one_wins` |
+| **US-08** Only clinicians can acknowledge; a missing note is rejected and nothing changes | `require_role("Clinician")`, `validate_response_note` | `test_acknowledge.py::test_only_clinicians_can_acknowledge`, `test_acknowledge_needs_a_valid_note` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested
 
-- Browser UI behaviour - checked manually for this iteration; automated UI tests are a candidate for later.
+- Escalation inbox and acknowledge screen in the browser (US-07/US-08 UI) - to be added to the Playwright suite once the UI branch is merged.
 - Performance target NFR-03 (95% of submissions scored in under 500 ms) - not measured yet.
 
 US-01 browser verification covered Nurse login, an authenticated observation save, sign-out, Admin login without clinical controls, and Admin sign-out. Observation data was isolated from the regular app storage.
