@@ -18,7 +18,10 @@ flowchart TD
         RISK["risk.py<br/>risk level, frequency,<br/>escalation decision"]
     end
     DB["db.py<br/>connections, schema,<br/>one-time JSON import"]
-    STORE[("caresight.db (SQLite)<br/>patients, observations,<br/>escalations")]
+    SEC["security.py<br/>lockout, password rules,<br/>headers, CSP"]
+    AUD["audit.py<br/>audit log"]
+    STAFF["staff.py<br/>staff accounts, wards"]
+    STORE[("caresight.db (SQLite)<br/>patients, observations, escalations,<br/>staff, wards, sessions, audit log")]
 
     UI -- "HTTP / JSON + bearer token" --> API
     API --> AUTH
@@ -30,6 +33,12 @@ flowchart TD
     PAT --> DB
     OBS --> DB
     ESC --> DB
+    API --> SEC
+    API --> AUD
+    API --> STAFF
+    AUTH --> DB
+    AUD --> DB
+    STAFF --> DB
     DB --> STORE
     OBS -.->|CLI only| NEWS
     NEWS --> SCORERS
@@ -47,6 +56,9 @@ flowchart TD
 | `db.py` | Opens SQLite connections, creates the schema, wraps work in transactions, imports old JSON data once | US-02, US-03, US-07, US-08 |
 | `patients.py` | Patient records (ID, name, ward, bed), validation, duplicate ID and occupied-bed checks on create and update, ward list | US-02 |
 | `escalations.py` | Turns a scoring result that requires escalation into an Open escalation, routed by risk level and tagged with the ward; lists by risk level then oldest first; acknowledges with a response note | US-07, US-08 |
+| `security.py` | Sign-in lockout and rate limiting, password rules, security headers and the page's Content-Security-Policy (script allowed by hash) | US-01, US-12 |
+| `audit.py` | Writes and lists audit log entries for sign-ins and every change | US-11 |
+| `staff.py` | Staff accounts and wards created by an Admin, stored in the database with hashed passwords | US-12 |
 | `notifications.py` | Reads email environment settings at runtime and sends an escalation summary through Gmail STARTTLS; never sends inline with the observation response | US-07 |
 | `main.py` | HTTP routes protected by the shared `auth.py` session and role dependencies, turns validation errors into `422` responses that name the bad fields | US-01, US-02, US-03, US-07 |
 | `observations.py` | Defines the seven fields and their valid ranges, validates a whole observation, saves and loads observations safely (atomic write, corrupt-file backup) | US-03 |
@@ -79,14 +91,17 @@ flowchart TD
 | **FastAPI with a single static page** | Meets the Chrome/Firefox requirement (NFR-05) with the least tooling. Easy for all four members to run locally. |
 | **SQLite through the standard library** | Gives transactions, unique constraints (one patient per bed) and safe concurrent writes with no server to install, so every member can run it. The modules kept their public functions, so routes and the scoring code did not change. Moving to PostgreSQL later only changes `db.py` and the SQL in the three storage modules. |
 | **Routing is a table keyed by the risk level from `risk.py`** | Scoring still only decides *whether* to escalate; `escalations.ROUTES` decides *who*. Changing a team never touches scoring. |
+| **Bearer token in memory, never cookies** | Removes CSRF as a class of attack without CSRF tokens; refreshing the page needs a new sign-in, which is acceptable on shared ward computers. |
+| **Content-Security-Policy with a script hash** | The page is a single file with one inline script, so the server hashes it at start-up. Any injected script is refused by the browser even if escaping were missed somewhere. |
 | **Acknowledge is a conditional update (`WHERE status = 'Open'`)** | Two clinicians cannot both acknowledge the same escalation, and the first response note is never overwritten. |
 | **One escalation per qualifying observation** | Matches the US-07 criterion ("when it is saved, an Open escalation is created") and lets each escalation be acknowledged on its own in US-08. |
 | **Salted PBKDF2 password hashes** | NFR-06 forbids storing passwords in plain text. |
 
 ## Known gaps (planned for the next iteration)
 
-- Sessions are in memory and require a single server worker. Restarting clears sessions. See [AUTH.md](AUTH.md).
-- Staff are not assigned to wards yet, so the ward list is filtered by choice rather than by the nurse's own ward (moves to US-12).
+- Sign-in lockout counters are in memory, so they apply per server process and reset on restart. Sessions themselves are in the database.
+- Staff can be assigned to a ward (US-12), but the ward list is still filtered by choice rather than limited to the nurse's own ward.
 - Acknowledged is the final status; there is no separate Resolved step yet.
 - Email delivery is disabled by default and best-effort only: in-process background tasks are not durable and are not automatically retried. See the US-07 instructions in `README.md`.
-- Staff provisioning is planned under US-12. Patient self-registration has been removed.
+- Overdue flags (US-09) and the trend chart (US-10) are calculated in the browser from data the API already returns.
+- Export of an escalation summary (US-13) is not built.

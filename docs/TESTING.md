@@ -12,7 +12,10 @@
 | Unit + integration | Patient records: required fields and length limits, duplicate IDs, occupied beds, ward filter, single-patient view, partial and full updates, bed conflicts on update, observations only for existing patients | `pytest`, `TestClient` | `tests/test_patients.py` |
 | Unit + integration | Escalations: created only at the thresholds, one per qualifying observation, ordered by risk then oldest first, Clinician-only listing, persisted in the database, best-effort email notification using mocked SMTP | `pytest`, `TestClient` | `tests/test_escalations.py`, `tests/test_notifications.py` |
 | Unit + integration | Routing and acknowledgement: route and urgency per risk level, ward filter, required response note, acknowledge once only (including 8 simultaneous attempts), role checks, open escalations follow a patient who changes ward | `pytest`, `TestClient`, threads | `tests/test_acknowledge.py` |
-| System (browser) | Sign-in and role navigation, patient create/edit, observation form by keyboard on a narrow screen | Playwright (Chromium) against a server with a temporary database | `browser_tests/workspace.spec.cjs` |
+| Unit + integration | Security: lockout and its expiry, per-address limit, identical behaviour for unknown usernames, password rules, security headers, CSP hash (with CRLF and LF files), no inline handlers, cookies ignored (CSRF), no CORS, sessions survive a restart and store only a token hash, audit log contents and Admin-only access | `pytest`, `TestClient` | `tests/test_hardening.py` |
+| Unit + integration | Staff and wards: validation, case-insensitive duplicates, hashed passwords, Admin-only routes, storage errors return 503, old `staff.json` imported | `pytest`, `TestClient` | `tests/test_staff.py`, `tests/test_admin.py` |
+| System (browser) | Sign-in and role navigation, session expiry and revocation, patient create/edit, observation form by keyboard on a narrow screen | Playwright (Chromium) against a server with a temporary database | `browser_tests/workspace.spec.cjs` |
+| System (browser) | Raise an escalation as a nurse and acknowledge it as a charge nurse, focus handling, nurses cannot see the inbox, overdue flag (with a controlled clock), trend chart and its text alternative, patient text never runs as script, audit log screen, no CSP violations | Playwright (Chromium) | `browser_tests/escalations.spec.cjs` |
 
 The scoring tests are the most thorough because NFR-01 requires the scoring engine to pass 100% of the boundary cases. Each test uses its own temporary SQLite database, so tests never touch real data and can run in any order.
 
@@ -20,15 +23,16 @@ Run everything with `pytest -v`. Lint runs with `flake8 .`. Browser tests run wi
 
 ### Regression policy
 
-All tests from P2 and P3 are kept. Five tests that read the old JSON files directly were rewritten to check the same behaviour against the database (storage unchanged on refused requests, escalation persisted, unreadable old data never overwritten). No test was deleted.
+All tests from P2 and P3 are kept. Tests that read the old JSON files directly (five from P2/P3 and six from the US-12 branch) were rewritten to check the same behaviour against the database (storage unchanged on refused requests, records persisted, unreadable old data never overwritten). No test was deleted.
+
+The browser tests share one temporary database per run and use fixed patient IDs, so run them once per server start (CI does this).
 
 ## Latest execution result
 
 ```
-221 passed (flake8: no problems)
+pytest:     313 passed (flake8: no problems)
+Playwright: 14 passed (Chromium)
 ```
-
-Combined with the in-progress US-12 and US-07 email branch (`feature/us-07-email`) in a trial merge: 277 passed.
 
 (Run `pytest -v` to see each case. CI results are on the repository's Actions tab.)
 
@@ -67,11 +71,17 @@ Combined with the in-progress US-12 and US-07 email branch (`feature/us-07-email
 | **US-08** An escalation cannot be acknowledged twice, even by two clinicians at once | conditional update inside a write transaction | `test_acknowledge.py::test_escalation_cannot_be_acknowledged_twice`, `test_simultaneous_acknowledgements_only_one_wins` |
 | **US-08** Only clinicians can acknowledge; a missing note is rejected and nothing changes | `require_role("Clinician")`, `validate_response_note` | `test_acknowledge.py::test_only_clinicians_can_acknowledge`, `test_acknowledge_needs_a_valid_note` |
 | **US-07** A newly persisted escalation schedules one sanitized, verified-TLS email notification; no escalation means no notification | `main.py` background task, `notifications.py` runtime configuration and SMTP sender | `tests/test_notifications.py` |
+| **US-01** Repeated failed sign-ins lock the account and are audited | `security.LoginThrottle`, `POST /api/login` | `test_hardening.py::test_account_locks_after_five_failures_even_with_the_right_password`, `test_failed_and_locked_logins_are_audited_without_passwords` |
+| **US-01** Sessions survive a restart; only token hashes are stored | `sessions` table, `auth.create_session` | `test_hardening.py::test_session_survives_a_server_restart`, `test_only_a_hash_of_the_token_is_stored` |
+| **US-08 UI** Charge nurse responds from the inbox and the escalation moves to Acknowledged | acknowledge panel in `index.html` | `escalations.spec.cjs` "nurse raises an escalation and a charge nurse acknowledges it" |
+| **US-09** Overdue patients are flagged on the ward list | Next observation column in `index.html` | `escalations.spec.cjs` "ward list flags a patient whose next observation is overdue" |
+| **US-10** Score trend per patient | trend panel in `index.html` | `escalations.spec.cjs` "trend shows each observation score" |
+| **US-11** Changes are recorded with who, what and when; only Admins can read them | `audit.py`, `GET /api/admin/audit` | `test_hardening.py::test_clinical_actions_are_audited`, `test_only_admins_can_read_the_audit_log` |
 | **NFR-06** Passwords stored as salted hashes | `hash_password` | `test_api.py::test_passwords_are_stored_as_salted_hashes` |
 
 ## Not yet tested
 
-- Escalation inbox and acknowledge screen in the browser (US-07/US-08 UI) - to be added to the Playwright suite once the UI branch is merged.
+- Real Gmail delivery - the sender is tested with a mocked SMTP server; a live send needs the project account's App Password.
 - Performance target NFR-03 (95% of submissions scored in under 500 ms) - not measured yet.
 
 US-01 browser verification covered Nurse login, an authenticated observation save, sign-out, Admin login without clinical controls, and Admin sign-out. Observation data was isolated from the regular app storage.

@@ -20,21 +20,25 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 
 ---
 
-## What works in this iteration (P3)
+## What works in this iteration (P4)
 
 | User story | Feature | Where |
 | :--- | :--- | :--- |
-| US-01 | Login with expiring session tokens and server-side Nurse / Clinician / Admin role checks | `main.py`, `index.html` |
+| US-01 | Login with expiring session tokens stored in the database (they survive a restart), server-side Nurse / Clinician / Admin role checks, account lockout and sign-in rate limiting | `auth.py`, `security.py`, `main.py`, `index.html` |
 | US-02 | Create, view, list and edit patients (ID, name, ward, bed); duplicate IDs and occupied beds get rejected; a ward list shows each patient's latest score, risk level and open escalation count, filterable by ward | `patients.py`, `main.py`, `index.html` |
 | US-03 | Record the seven observations with validation, timestamp and recorder; invalid or incomplete sets are rejected and nothing is saved | `observations.py`, `main.py` |
 | US-04 | One NEWS2 scorer per parameter behind a common interface, with thresholds in one file | `scoring/scorers.py`, `scoring/bands.py` |
 | US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
 | US-06 | Score breakdown with raw values, sub-scores and total; parameters scoring 3 are highlighted | `index.html`, `scoring/news2.py` |
 | US-07 | Observations with a total of 5+ or any single 3 create an Open escalation, routed by risk level (High: critical care outreach, Medium: ward doctor or acute care team, Low-medium: ward doctor) and tagged with the patient's ward; clinicians see open escalations by risk level, then oldest first, filterable by ward; configured recipients receive a best-effort email notification | `escalations.py`, `notifications.py`, `main.py`, `index.html` |
-| US-08 (backend) | Clinicians acknowledge an open escalation with a required response note; the record keeps who acknowledged it and when; an escalation can only be acknowledged once | `escalations.py`, `main.py` |
+| US-07 (UI) | Escalation inbox coloured by risk level, filterable by status | `index.html` |
+| US-08 | Clinicians acknowledge an open escalation with a required response note from the inbox; the record keeps who acknowledged it and when; an escalation can only be acknowledged once | `escalations.py`, `main.py`, `index.html` |
+| US-09 | Ward list shows when each patient's next observation is due and flags overdue patients | `index.html` |
+| US-10 | Per-patient NEWS2 score trend chart, with a text alternative for screen readers | `index.html` |
+| US-11 | Audit log of sign-ins, patient, observation, escalation, staff and ward actions; Admin only | `audit.py`, `main.py`, `index.html` |
 | US-12 | Admin-managed wards and staff accounts with server-side role enforcement | `staff.py`, `auth.py`, `main.py`, `index.html` |
 
-Not yet built: overdue flags (US-09), trends (US-10), audit log (US-11), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
+Not yet built: export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
@@ -64,15 +68,15 @@ Nurse and Clinician accounts can record and read observations. Admin accounts ar
 
 **Command-line entry** (no web server needed): `python observations.py`
 
-All data is stored in a SQLite database, `caresight.db`, next to the code (ignored by git). Set `CARESIGHT_DB` to use a different file. If old `patients.json`, `observations.json` or `escalations.json` files are present when the database is first created, their data is imported once and the JSON files are left untouched.
+All data is stored in a SQLite database, `caresight.db`, next to the code (ignored by git). Set `CARESIGHT_DB` to use a different file. If old `patients.json`, `observations.json`, `escalations.json` or `staff.json` files are present when the database is first created, their data is imported once and the JSON files are left untouched.
 
 ### US-12 staff and ward administration
 
-An Admin can open **Administration** to create wards and staff accounts. Wards are managed in `staff.json` and may be used alongside ward names found in existing patient records. New staff passwords must contain 12-128 characters. Nurse and Clinician accounts require an existing ward; Admin accounts may omit one.
+An Admin can open **Administration** to create wards and staff accounts and to read the audit log. Wards may be used alongside ward names found in existing patient records. New staff passwords must contain 12-128 characters, must not contain the username and must not be a common password. Nurse and Clinician accounts require an existing ward; Admin accounts may omit one.
 
-Demo accounts remain available with the usernames and password listed above. Local staff accounts are stored in `staff.json`, which is git-ignored together with temporary `.staff-*.tmp` files. Do not add real account credentials or `staff.json` to Git.
+Demo accounts remain available with the usernames and password listed above. Staff accounts are stored (with hashed passwords) in `caresight.db`, which is git-ignored. Do not add real account credentials or the database to Git.
 
-Staff storage and sessions use in-process JSON and memory respectively, so one server worker is required and sessions are cleared on restart. Ward assignment is account metadata; it does not restrict clinical patient or observation access.
+Ward assignment is account metadata; it does not restrict clinical patient or observation access.
 
 ### US-07 escalation email notifications
 
@@ -129,11 +133,14 @@ The patient edit form uses `PATCH /api/patients/{patient_id}` with any of `name`
 auth.py             Shared session management and require_role dependency
 main.py             FastAPI app: login, logout, patient, ward list, observation, history and escalation endpoints
 db.py               SQLite connection, schema and one-time import of old JSON data
-notifications.py    Best-effort Gmail STARTTLS delivery for newly created escalations
 index.html          Single-page UI: sign in, ward list, add patient, observation entry, score breakdown
 observations.py     Observation fields, validation and storage (also a CLI)
 patients.py         Patient records (ID, name, ward, bed): create, update, list
 escalations.py      Creates, routes, lists and acknowledges escalations from the scoring result
+security.py         Sign-in lockout and rate limiting, password rules, security headers and CSP
+audit.py            Audit log of user actions
+staff.py            Staff accounts and wards (US-12)
+notifications.py    Best-effort Gmail delivery for new escalations (US-07)
 scoring/
   bands.py          NEWS2 thresholds (the one place they are defined)
   scorers.py        One scorer class per parameter
@@ -154,4 +161,17 @@ docs/               Architecture, testing plan, backlog, iteration review
 
 ## Authentication
 
-Login returns an eight-hour bearer token. The browser holds it in memory, so refreshing requires signing in again. Sign out revokes the token on the server. Run one server worker because sessions are currently stored in memory and are cleared on restart. See [the shared authentication helper](docs/AUTH.md) for endpoint integration and the access matrix.
+Login returns an eight-hour bearer token. The browser holds it in memory, so refreshing requires signing in again. Sign out revokes the token on the server. Sessions are stored in the database (only a hash of each token), so a server restart does not sign people out. See [the shared authentication helper](docs/AUTH.md) for endpoint integration, the access matrix and the security measures.
+
+### Security measures
+
+| Threat | Protection |
+| :--- | :--- |
+| Password guessing | 5 failed sign-ins lock that username for 15 minutes; 20 failed sign-ins from one address in 15 minutes block that address. Both return `429` with `Retry-After`. Unknown usernames behave exactly like real ones. |
+| Weak passwords | Staff passwords: 12-128 characters, not containing the username, not a common password. Stored as salted PBKDF2 hashes. |
+| Cross-site scripting (XSS) | All data is escaped before display; the page has no inline event handlers; a Content-Security-Policy only allows the page's own script (by SHA-256 hash). |
+| Cross-site request forgery (CSRF) | Not possible by design: the API only accepts the token in the `Authorization` header, never from cookies, and sends no CORS permission to other sites. |
+| Clickjacking, MIME sniffing, leaks | `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on the API. |
+| Accountability | Audit log of sign-ins (including failures and lockouts) and every change to patients, observations, escalations, staff and wards. |
+
+The sign-in limits are kept in memory, so they reset when the server restarts and apply per server process.
