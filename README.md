@@ -31,8 +31,9 @@ Repository: https://github.com/n85mith/COMP3415-GROUP_PROJECT
 | US-05 | Total score, risk level (Low / Low-medium / Medium / High), observation frequency and next-due time | `scoring/risk.py`, `scoring/news2.py` |
 | US-06 | Score breakdown with raw values, sub-scores and total; parameters scoring 3 are highlighted | `index.html`, `scoring/news2.py` |
 | US-07 | Observations with a total of 5+ or any single 3 create an Open escalation; clinicians see open escalations by risk level, then oldest first | `escalations.py`, `main.py`, `index.html` |
+| US-12 | Admin-managed wards and staff accounts with server-side role enforcement | `staff.py`, `auth.py`, `main.py`, `index.html` |
 
-Not yet built: acknowledging escalations (US-08), overdue flags (US-09), trends (US-10), audit log (US-11), admin pages (US-12), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
+Not yet built: acknowledging escalations (US-08), overdue flags (US-09), trends (US-10), audit log (US-11), export (US-13). See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
@@ -63,6 +64,14 @@ Nurse and Clinician accounts can record and read observations. Admin accounts ar
 **Command-line entry** (no web server needed): `python observations.py`
 
 Observations are saved to `observations.json`, patients to `patients.json` and escalations to `escalations.json` next to the code (all ignored by git). They are replaced by a database in a later iteration.
+
+### US-12 staff and ward administration
+
+An Admin can open **Administration** to create wards and staff accounts. Wards are managed in `staff.json` and may be used alongside ward names found in existing patient records. New staff passwords must contain 12-128 characters. Nurse and Clinician accounts require an existing ward; Admin accounts may omit one.
+
+Demo accounts remain available with the usernames and password listed above. Local staff accounts are stored in `staff.json`, which is git-ignored together with temporary `.staff-*.tmp` files. Do not add real account credentials or `staff.json` to Git.
+
+Staff storage and sessions use in-process JSON and memory respectively, so one server worker is required and sessions are cleared on restart. Ward assignment is account metadata; it does not restrict clinical patient or observation access.
 
 ## Running the tests
 

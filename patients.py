@@ -100,4 +100,8 @@ def list_patients(ward=None):
 
 
 def list_wards():
-    return sorted({p["ward"] for p in load_patients()}, key=str.lower)
+    wards = {p["ward"] for p in load_patients()}
+    import staff
+
+    wards.update(staff.list_wards())
+    return sorted(wards, key=str.lower)

@@ -49,7 +49,9 @@ def _token_key(token: str) -> str:
 
 
 def create_session(username: str) -> str:
-    if username not in USERS or USERS[username]["role"] not in ROLES:
+    username = normalize_account_username(username)
+    user = get_account(username)
+    if user is None or user["role"] not in ROLES:
         raise ValueError("Cannot create a session for this user")
     token = secrets.token_urlsafe(32)
     now = time.time()
@@ -64,6 +66,33 @@ def create_session(username: str) -> str:
 def revoke_session(token: str) -> None:
     with _session_lock:
         _sessions.pop(_token_key(token), None)
+
+
+def normalize_account_username(username: str) -> str:
+    return username.strip().lower() if isinstance(username, str) else ""
+
+
+def get_account(username: str) -> Optional[dict]:
+    key = normalize_account_username(username)
+    if not key:
+        return None
+
+    if key in USERS:
+        user = USERS[key]
+        return {
+            "username": key,
+            "name": user["name"],
+            "password": user["password"],
+            "role": user["role"],
+            "ward": user.get("ward"),
+        }
+
+    import staff
+
+    stored = staff.get_staff(key)
+    if stored is None:
+        return None
+    return {"username": key, **stored}
 
 
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict:
@@ -82,10 +111,15 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
         if session.expires_at <= time.time():
             del _sessions[key]
             raise unauthorized
-    user = USERS.get(session.username)
+    user = get_account(session.username)
     if user is None or user["role"] not in ROLES:
         raise unauthorized
-    return {"username": session.username, "name": user["name"], "role": user["role"]}
+    return {
+        "username": session.username,
+        "name": user["name"],
+        "role": user["role"],
+        "ward": user.get("ward"),
+    }
 
 
 def require_role(*roles: str):

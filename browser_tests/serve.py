@@ -6,6 +6,7 @@ import uvicorn
 import escalations
 import observations
 import patients
+import staff
 
 
 def run():
@@ -14,6 +15,7 @@ def run():
         escalations.ESCALATIONS_FILE = str(root / "escalations.json")
         observations.OBSERVATIONS_FILE = str(root / "observations.json")
         patients.PATIENTS_FILE = str(root / "patients.json")
+        staff.STAFF_FILE = root / "staff.json"
         uvicorn.run("main:app", host="127.0.0.1", port=8767)
 
 

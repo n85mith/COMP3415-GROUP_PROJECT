@@ -16,3 +16,7 @@ patients.corrupt-*.json
 escalations.json
 escalations.json.tmp
 escalations.corrupt-*.json
+
+# Local staff accounts and ward configuration -LINCOLN S
+staff.json
+.staff-*.tmp

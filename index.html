@@ -356,7 +356,50 @@
         <div class="error" id="session-error" role="alert"></div>
         <section id="admin-section" hidden aria-labelledby="admin-heading">
             <h2 id="admin-heading" tabindex="-1">Administration</h2>
-            <p>Staff and ward management will be available when US-12 is connected.</p>
+            <div class="obs-grid">
+                <section aria-labelledby="staff-list-heading">
+                    <h3 id="staff-list-heading">Staff accounts</h3>
+                    <div class="error" id="staff-error" role="alert"></div>
+                    <div class="success" id="staff-success" role="status"></div>
+                    <div id="staff-list" role="region" aria-label="Staff accounts"></div>
+                </section>
+                <section aria-labelledby="ward-admin-heading">
+                    <h3 id="ward-admin-heading">Managed wards</h3>
+                    <div class="error" id="admin-ward-error" role="alert"></div>
+                    <div class="success" id="admin-ward-success" role="status"></div>
+                    <div id="admin-ward-list" role="region" aria-label="Managed wards"></div>
+                </section>
+            </div>
+            <div class="obs-grid">
+                <form id="staff-form" novalidate>
+                    <h3>Create staff account</h3>
+                    <label for="staff-username">Username</label>
+                    <input type="text" id="staff-username" autocomplete="off" required />
+                    <label for="staff-name">Full name</label>
+                    <input type="text" id="staff-name" autocomplete="name" required />
+                    <label for="staff-password">Password</label>
+                    <input type="password" id="staff-password" autocomplete="new-password" required />
+                    <p class="muted">Password must contain 12-128 characters.</p>
+                    <label for="staff-role">Role</label>
+                    <select id="staff-role" required>
+                        <option value="">Select a role...</option>
+                        <option value="Nurse">Nurse</option>
+                        <option value="Clinician">Clinician</option>
+                        <option value="Admin">Admin</option>
+                    </select>
+                    <label for="staff-ward">Ward</label>
+                    <select id="staff-ward">
+                        <option value="">No ward</option>
+                    </select>
+                    <button id="staff-submit" type="submit">Create Staff Account</button>
+                </form>
+                <form id="admin-ward-form" novalidate>
+                    <h3>Create ward</h3>
+                    <label for="admin-ward-name">Ward name</label>
+                    <input type="text" id="admin-ward-name" required maxlength="80" />
+                    <button id="admin-ward-submit" type="submit">Create Ward</button>
+                </form>
+            </div>
         </section>
 
         <div id="esc-section" style="display: none;">
@@ -522,6 +565,7 @@
             }
             if (focus) document.getElementById(panels[key][2]).focus();
             if (key === 'escalations') loadEscalations().catch(() => {});
+            if (key === 'admin') refreshAdmin().catch(() => {});
         }
 
         workspaceNav.addEventListener('click', (event) => {
@@ -593,6 +637,7 @@
             showPanel(available[0], false);
             welcome.focus();
             if (isStaff) refreshPatients();
+            if (user.role === 'Admin') refreshAdmin();
 
             const token = sessionToken;
             if (Number.isFinite(user.expires_in) && user.expires_in > 0) {
@@ -616,6 +661,7 @@
             loginForm.reset();
             resetObservationForm();
             clearPatientData();
+            clearAdminData();
             showView('login');
             if (message) showMessage(loginError, message);
             usernameInput.focus();
@@ -636,6 +682,190 @@
                 }
             } finally {
                 logoutButton.disabled = false;
+            }
+        });
+
+        const staffForm = document.getElementById('staff-form');
+        const staffError = document.getElementById('staff-error');
+        const staffSuccess = document.getElementById('staff-success');
+        const staffList = document.getElementById('staff-list');
+        const staffRole = document.getElementById('staff-role');
+        const staffWard = document.getElementById('staff-ward');
+        const staffSubmit = document.getElementById('staff-submit');
+        const wardForm = document.getElementById('admin-ward-form');
+        const wardError = document.getElementById('admin-ward-error');
+        const wardSuccess = document.getElementById('admin-ward-success');
+        const wardListManaged = document.getElementById('admin-ward-list');
+        const wardSubmit = document.getElementById('admin-ward-submit');
+
+        function clearAdminData() {
+            staffForm.reset();
+            wardForm.reset();
+            staffError.style.display = 'none';
+            staffSuccess.style.display = 'none';
+            wardError.style.display = 'none';
+            wardSuccess.style.display = 'none';
+            staffList.replaceChildren();
+            wardListManaged.replaceChildren();
+            staffWard.replaceChildren(new Option('No ward', ''));
+        }
+
+        function readApiError(data, fallback) {
+            return typeof data.detail === 'string' ? data.detail : fallback;
+        }
+
+        function renderStaff(rows) {
+            staffList.replaceChildren();
+            if (!rows.length) {
+                const empty = document.createElement('p');
+                empty.className = 'muted';
+                empty.textContent = 'No staff accounts.';
+                staffList.append(empty);
+                return;
+            }
+            const table = document.createElement('table');
+            table.className = 'breakdown';
+            table.setAttribute('aria-label', 'Staff accounts');
+            const thead = table.createTHead();
+            const header = thead.insertRow();
+            for (const label of ['Username', 'Full name', 'Role', 'Ward']) {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.textContent = label;
+                header.append(th);
+            }
+            const tbody = table.createTBody();
+            for (const row of rows) {
+                const tr = tbody.insertRow();
+                for (const value of [
+                    row.username,
+                    row.name,
+                    row.role === 'Clinician' ? 'Charge nurse' : row.role,
+                    row.ward || '-',
+                ]) {
+                    const td = tr.insertCell();
+                    td.textContent = String(value);
+                }
+            }
+            staffList.append(table);
+        }
+
+        function renderManagedWards(rows) {
+            wardListManaged.replaceChildren();
+            if (!rows.length) {
+                const empty = document.createElement('p');
+                empty.className = 'muted';
+                empty.textContent = 'No managed wards.';
+                wardListManaged.append(empty);
+                return;
+            }
+            const list = document.createElement('ul');
+            for (const ward of rows) {
+                const item = document.createElement('li');
+                item.textContent = ward;
+                list.append(item);
+            }
+            wardListManaged.append(list);
+        }
+
+        async function refreshAdmin() {
+            if (currentRole !== 'Admin') return;
+            try {
+                const [staffResponse, wardResponse] = await Promise.all([
+                    apiFetch('/api/admin/staff'),
+                    apiFetch('/api/admin/wards'),
+                ]);
+                if (!staffResponse.ok || !wardResponse.ok) throw new Error('Unable to load administration');
+                const staffRows = await staffResponse.json();
+                const wardRows = await wardResponse.json();
+                renderStaff(staffRows);
+                renderManagedWards(wardRows);
+                staffWard.replaceChildren(
+                    new Option('No ward', ''),
+                    ...wardRows.map(ward => new Option(ward, ward)),
+                );
+            } catch (error) {
+                if (!(error instanceof SessionEndedError)) {
+                    showMessage(staffError, 'Unable to load staff and ward information.');
+                }
+            }
+        }
+
+        staffRole.addEventListener('change', () => {
+            const requiresWard = staffRole.value === 'Nurse' || staffRole.value === 'Clinician';
+            staffWard.required = requiresWard;
+        });
+
+        staffForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (staffSubmit.disabled) return;
+            staffError.style.display = 'none';
+            staffSuccess.style.display = 'none';
+            if (!staffForm.reportValidity()) return;
+            const role = staffRole.value;
+            if ((role === 'Nurse' || role === 'Clinician') && !staffWard.value) {
+                showMessage(staffError, 'Nurses and clinicians must be assigned to a ward.');
+                staffWard.focus();
+                return;
+            }
+            const body = {
+                username: document.getElementById('staff-username').value,
+                name: document.getElementById('staff-name').value,
+                password: document.getElementById('staff-password').value,
+                role,
+                ward: staffWard.value || null,
+            };
+            staffSubmit.disabled = true;
+            try {
+                const res = await apiFetch('/api/admin/staff', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    showMessage(staffError, readApiError(data, 'Unable to create the staff account.'));
+                    return;
+                }
+                staffForm.reset();
+                showMessage(staffSuccess, `Staff account ${data.username} created.`);
+                await refreshAdmin();
+            } catch (error) {
+                if (!(error instanceof SessionEndedError)) {
+                    showMessage(staffError, 'Unable to create the staff account.');
+                }
+            } finally {
+                staffSubmit.disabled = false;
+            }
+        });
+
+        wardForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (wardSubmit.disabled) return;
+            wardError.style.display = 'none';
+            wardSuccess.style.display = 'none';
+            if (!wardForm.reportValidity()) return;
+            wardSubmit.disabled = true;
+            try {
+                const res = await apiFetch('/api/admin/wards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: document.getElementById('admin-ward-name').value }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    showMessage(wardError, readApiError(data, 'Unable to create the ward.'));
+                    return;
+                }
+                wardForm.reset();
+                showMessage(wardSuccess, `Ward ${data.name} created.`);
+                await refreshAdmin();
+            } catch (error) {
+                if (!(error instanceof SessionEndedError)) {
+                    showMessage(wardError, 'Unable to create the ward.');
+                }
+            } finally {
+                wardSubmit.disabled = false;
             }
         });
 
