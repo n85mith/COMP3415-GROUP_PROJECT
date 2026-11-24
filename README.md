@@ -97,6 +97,12 @@ To manually test, sign in with a clinical account, create a synthetic patient, t
 
 Delivery uses verified STARTTLS and is best-effort via an in-process background task. Invalid configuration or SMTP/network failures are logged in sanitized form and do not undo a saved observation or escalation. There are no automatic retries or durable queue, and process exit can lose a pending task; repeated qualifying observations create separate escalations and may each generate a notification. Notifications are for an educational simulation only, not a real clinical alert system.
 
+## Online demo (Render)
+
+`render.yaml` deploys the app as a free Render web service from `main`. In Render choose **New → Blueprint**, connect this repository and apply. Every push to `main` redeploys. The free service sleeps when idle (the first visit takes about a minute) and its disk is temporary, so the demo database is reset on each restart or deploy. Only use synthetic data and the demo accounts. E-mail stays disabled unless `CARESIGHT_EMAIL_ENABLED`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` and `ESCALATION_RECIPIENTS` are set in the Render dashboard (never in the repository).
+
+The server runs with `--proxy-headers` so sign-in limits apply to each visitor's address rather than to Render's proxy.
+
 ## Running the tests
 
 ```bash
